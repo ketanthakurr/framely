@@ -1,0 +1,80 @@
+{
+  "identifier" : "7C1F2A40",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_enableAskToBuyInterruptionForTesting" : false,
+    "_storeKitErrors" : [
+
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "21500001",
+      "localizations" : [
+
+      ],
+      "name" : "Framely Pro",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "19.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6500000002",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Everything in Framely, billed yearly.",
+              "displayName" : "Framely Pro Yearly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.widget.framely.pro.yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Pro Yearly",
+          "subscriptionGroupID" : "21500001",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "2.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "6500000001",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Everything in Framely, billed monthly.",
+              "displayName" : "Framely Pro Monthly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.widget.framely.pro.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Pro Monthly",
+          "subscriptionGroupID" : "21500001",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}

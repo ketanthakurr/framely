@@ -1,0 +1,6 @@
+Framely.xcodeproj/
+xcuserdata/
+DerivedData/
+.DS_Store
+*.xcuserstate
+build/
