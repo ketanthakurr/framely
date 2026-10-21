@@ -7,9 +7,12 @@ struct HomeView: View {
     @Namespace private var zoom
 
     @State private var focusedSetID: UUID?
+    /// Last real set in view. The "New set" card has no id, so scrolling to it reports nil,
+    /// which made the preview and background jump back to the first set.
+    @State private var lastFocusedID: UUID?
 
     private var focusedSet: PhotoSet? {
-        model.sets.first { $0.id == focusedSetID } ?? model.sets.first
+        model.sets.first { $0.id == (focusedSetID ?? lastFocusedID) } ?? model.sets.first
     }
 
     var body: some View {
@@ -37,10 +40,13 @@ struct HomeView: View {
                         .accessibilityLabel("Get Framely Pro")
                 }
             }
+            .noGlassBubble()
             ToolbarItem(placement: .topBarTrailing) {
+                // Plain glyph in the standard toolbar button, same size as the system Back button.
                 NavigationLink(value: Route.settings) {
-                    Image(systemName: "gearshape.fill")
+                    Image(systemName: "gearshape")
                 }
+                .tint(.primary)
                 .accessibilityLabel("Settings")
             }
         }
@@ -79,7 +85,7 @@ struct HomeView: View {
                 LazyHStack(spacing: 18) {
                     ForEach(model.sets) { set in
                         NavigationLink(value: Route.set(set.id)) {
-                            SetCard(set: set)
+                            SetCard(set: set, schedule: store.gate.schedule(for: set))
                                 .zoomSource(id: set.id, in: zoom)
                         }
                         .buttonStyle(PressableStyle())
@@ -101,6 +107,7 @@ struct HomeView: View {
             .scrollTargetBehavior(.viewAligned)
             .contentMargins(.horizontal, 20, for: .scrollContent)
             .scrollPosition(id: $focusedSetID)
+            .onChange(of: focusedSetID) { _, id in if let id { lastFocusedID = id } }
             .frame(height: 360)
         }
     }
@@ -111,7 +118,7 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: 14) {
             SectionHeader(
                 title: "Widget Preview",
-                subtitle: "“\(set.name)” · \(set.intervalTitle.lowercased())",
+                subtitle: "“\(set.name)” · \(store.gate.schedule(for: set).title.lowercased())",
                 trailing: AnyView(
                     NavigationLink(value: Route.widgetGuide) {
                         Label("Add", systemImage: "plus.circle.fill")
@@ -186,6 +193,24 @@ struct FeatureRow: View {
         .foregroundStyle(.primary)
         .padding(14)
         .glass(cornerRadius: 22)
+    }
+}
+
+// MARK: - Toolbar
+
+extension ToolbarContent {
+    /// iOS 26 wraps toolbar items in a Liquid Glass bubble; drop it for items that draw their own shape (the PRO badge).
+    @ToolbarContentBuilder
+    func noGlassBubble() -> some ToolbarContent {
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            self.sharedBackgroundVisibility(.hidden)
+        } else {
+            self
+        }
+        #else
+        self
+        #endif
     }
 }
 

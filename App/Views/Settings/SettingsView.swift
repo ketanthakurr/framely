@@ -27,14 +27,24 @@ struct SettingsView: View {
                     .listRowInsets(EdgeInsets())
             }
 
+            if ProConfig.everythingFree {
+                Section {
+                    Label("Tester build: every Pro feature is unlocked. Don’t submit this build to the App Store.",
+                          systemImage: "hammer.fill")
+                        .font(Brand.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section("Subscription") {
-                if store.isPro {
+                if store.hasSubscription {
                     Button { showManage = true } label: { row("Manage Subscription", "creditcard.fill", Brand.lavender) }
-                } else {
+                } else if !store.isPro {
                     Button { router.showPaywall = true } label: { row("Upgrade to Pro", "crown.fill", Brand.gold) }
                 }
                 Button { showRedeem = true } label: { row("Redeem Code", "giftcard.fill", Brand.coral) }
                 Button { Task { await store.restore() } } label: { row("Restore Purchases", "arrow.clockwise", Brand.mint) }
+                    .disabled(store.isRestoring)
             }
 
             Section("Customize") {
@@ -80,6 +90,11 @@ struct SettingsView: View {
         }
         .scrollContentBackground(.hidden)
         .background(AnimatedBackground())
+        // Restore runs from here too; without this its errors were silent, then popped up later
+        // on the paywall.
+        .alert("Heads up", isPresented: Binding(get: { store.lastError != nil }, set: { if !$0 { store.lastError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(store.lastError ?? "") }
         .navigationTitle("Settings")
         .sheet(isPresented: $showRedeem) { RedeemCodeSheet() }
         .manageSubscriptionsSheet(isPresented: $showManage)
@@ -97,7 +112,7 @@ struct SettingsView: View {
                             in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             VStack(alignment: .leading, spacing: 3) {
                 Text(store.isPro ? "Framely Pro" : "Framely Free").font(Brand.title(22))
-                Text(store.isPro ? "Everything unlocked. Thank you! 💜" : "\(model.sets.count) of \(ProConfig.freeMaxSets) set · up to \(ProConfig.freeMaxPhotosPerSet) photos")
+                Text(store.hasLifetime ? "Lifetime · everything unlocked. Thank you! 💜" : store.isPro ? "Everything unlocked. Thank you! 💜" : "\(model.sets.count) of \(ProConfig.freeMaxSets) set · up to \(ProConfig.freeMaxPhotosPerSet) photos")
                     .font(Brand.caption).foregroundStyle(.secondary)
             }
             Spacer()

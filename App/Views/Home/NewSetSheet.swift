@@ -14,7 +14,7 @@ struct NewSetSheet: View {
     @FocusState private var focused: Bool
 
     private let suggestions = ["Family", "Travel", "Us", "Pets", "Friends", "Summer ’26"]
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 6)
+    private let columns = [GridItem(.adaptive(minimum: 46), spacing: 12)]  // 6 across on most phones, fewer on an SE
 
     var body: some View {
         NavigationStack {
@@ -28,6 +28,7 @@ struct NewSetSheet: View {
                         .shadow(color: Brand.lavender.opacity(0.5), radius: 16, y: 8)
                         .contentTransition(.symbolEffect(.replace))
                         .padding(.top, 8)
+                        .accessibilityHidden(true)
 
                     TextField("Set name", text: $name)
                         .font(Brand.title(24))
@@ -65,6 +66,8 @@ struct NewSetSheet: View {
                                     .glassCircle()
                             }
                             .buttonStyle(PressableStyle())
+                            .accessibilityLabel(Self.symbolName(s))
+                            .accessibilityAddTraits(symbol == s ? .isSelected : [])
                         }
                     }
                 }
@@ -108,5 +111,13 @@ struct NewSetSheet: View {
                 router.path = [.set(set.id)]
             }
         }
+    }
+}
+
+extension NewSetSheet {
+    /// VoiceOver name for an icon, e.g. "moon.stars.fill" → "Moon stars".
+    static func symbolName(_ symbol: String) -> String {
+        let words = symbol.split(separator: ".").filter { $0 != "fill" && $0 != "2" }.joined(separator: " ")
+        return words.prefix(1).uppercased() + words.dropFirst()
     }
 }

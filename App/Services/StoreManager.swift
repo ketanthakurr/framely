@@ -16,8 +16,13 @@ final class StoreManager {
     private(set) var isPro: Bool
     private(set) var activeProductID: String?
     private(set) var renewalDate: Date?
+    /// Owns the one-time Lifetime purchase (bought, or from a lifetime offer code).
+    private(set) var hasLifetime = false
+    /// Has a running subscription (shown so it can be managed or cancelled, also next to Lifetime).
+    private(set) var hasSubscription = false
     private(set) var loadState: LoadState = .idle
     private(set) var isPurchasing = false
+    private(set) var isRestoring = false
     var lastError: String?
 
     private var updatesTask: Task<Void, Never>?
@@ -35,6 +40,7 @@ final class StoreManager {
 
     var yearly: Product? { products.first { $0.id == ProConfig.yearlyProductID } }
     var monthly: Product? { products.first { $0.id == ProConfig.monthlyProductID } }
+    var lifetime: Product? { products.first { $0.id == ProConfig.lifetimeProductID } }
 
     /// e.g. 58 when yearly costs 42% of 12 × monthly.
     var yearlySavingsPercent: Int? {
@@ -50,7 +56,14 @@ final class StoreManager {
         loadState = .loading
         do {
             let fetched = try await Product.products(for: ProConfig.productIDs)
-            products = fetched.sorted { $0.price > $1.price }
+            // Unknown product IDs come back as an empty list, not an error. Surface it
+            // (with Try again) rather than showing no plans and a dead Continue button.
+            guard !fetched.isEmpty else {
+                loadState = .failed("No subscriptions found for this app.")
+                return
+            }
+            let rank = { (p: Product) in ProConfig.productIDs.firstIndex(of: p.id) ?? .max }
+            products = fetched.sorted { rank($0) < rank($1) }
             loadState = .loaded
         } catch {
             loadState = .failed(error.localizedDescription)
@@ -70,7 +83,7 @@ final class StoreManager {
         case .year: unit = "year"
         @unknown default: unit = "day"
         }
-        return "\(offer.period.value)-\(unit) free trial"   // e.g. "1-week free trial"
+        return "\(offer.period.value) \(unit) free trial"   // e.g. "1 week free trial"
     }
 
     // MARK: Purchase
@@ -86,7 +99,11 @@ final class StoreManager {
                 await transaction.finish()
                 await refreshEntitlements()
                 return true
-            case .userCancelled, .pending:
+            case .pending:
+                // Ask to Buy or bank approval: say so, or the spinner just stops and people tap again.
+                lastError = "Your purchase is waiting for approval. Pro unlocks automatically once it’s approved."
+                return false
+            case .userCancelled:
                 return false
             @unknown default:
                 return false
@@ -98,33 +115,44 @@ final class StoreManager {
     }
 
     func restore() async {
+        guard !isRestoring else { return }  // repeated taps would stack sign-in prompts
+        isRestoring = true
+        defer { isRestoring = false }
         do {
             try await AppStore.sync()
+        } catch StoreKitError.userCancelled {
+            return
         } catch {
             lastError = error.localizedDescription
+            return
         }
         await refreshEntitlements()
-        if !isPro { lastError = "No active Framely Pro subscription was found for this Apple ID." }
+        if !isPro { lastError = "No Framely Pro purchase or active subscription was found for this Apple ID." }
     }
 
     // MARK: Entitlements
 
     func refreshEntitlements() async {
-        var pro = false
-        var productID: String?
-        var expiry: Date?
+        var lifetime = false
+        var subscription: (id: String, expiry: Date?)?
         for await result in StoreKit.Transaction.currentEntitlements {
             guard case .verified(let t) = result,
                   ProConfig.productIDs.contains(t.productID),
                   t.revocationDate == nil else { continue }
-            pro = true
-            productID = t.productID
-            expiry = t.expirationDate
+            if t.productID == ProConfig.lifetimeProductID {
+                lifetime = true
+            } else {
+                subscription = (t.productID, t.expirationDate)
+            }
         }
+        let pro = lifetime || subscription != nil
         let changed = pro != isPro
         isPro = pro
-        activeProductID = productID
-        renewalDate = expiry
+        hasLifetime = lifetime
+        hasSubscription = subscription != nil
+        // Lifetime wins: it never ends, so there's no renewal date to show.
+        activeProductID = lifetime ? ProConfig.lifetimeProductID : subscription?.id
+        renewalDate = lifetime ? nil : subscription?.expiry
         SharedStore.shared.isProCached = pro
         if changed { WidgetCenter.shared.reloadAllTimelines() }
     }

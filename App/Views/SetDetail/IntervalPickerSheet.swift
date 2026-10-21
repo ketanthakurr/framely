@@ -67,7 +67,7 @@ struct IntervalPickerSheet: View {
                     if tooShort {
                         notice("The shortest interval is \(RotationInterval.longTitle(minutes: ProConfig.absoluteMinimumMinutes)).", symbol: "exclamationmark.triangle.fill")
                     } else if needsPro {
-                        notice("Changing more often than every \(RotationInterval.longTitle(minutes: ProConfig.freeMinimumMinutes)) is part of Framely Pro.", symbol: "crown.fill")
+                        notice("Faster than \(RotationInterval.everyTitle(minutes: ProConfig.freeMinimumMinutes).lowercased()) is part of Framely Pro.", symbol: "crown.fill")
                     }
                 }
                 .padding(20)

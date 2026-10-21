@@ -72,8 +72,13 @@ enum PhotoScheduler {
         return set.photos[i]
     }
 
+    /// Most entries in one widget timeline. The app pre-renders exactly this many rotations
+    /// (`RenderedImageCache.prewarm`), so every entry the widget draws is a file read. At a
+    /// 1-minute interval that's one reload every ~48 minutes, well inside WidgetKit's budget.
+    static let timelineLength = 48
+
     /// Timeline dates for the next rotations, capped to keep the widget's timeline small.
-    static func upcomingDates(from now: Date, schedule: RotationSchedule, maxEntries: Int = 144, horizon: TimeInterval = 24 * 3600) -> [Date] {
+    static func upcomingDates(from now: Date, schedule: RotationSchedule, maxEntries: Int = timelineLength, horizon: TimeInterval = 24 * 3600) -> [Date] {
         var dates = [now]
         var s = slot(at: now, schedule: schedule) + 1
         while dates.count < maxEntries {

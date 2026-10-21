@@ -61,7 +61,7 @@ enum OverlayPosition: String, Codable, CaseIterable, Identifiable, Sendable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .topLeading: "Top"
+        case .topLeading: "Top left"
         case .bottomLeading: "Bottom left"
         case .bottomTrailing: "Bottom right"
         }

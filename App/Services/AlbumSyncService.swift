@@ -91,7 +91,7 @@ enum AlbumSyncService {
 
     /// Downloads (from iCloud if needed) a screen-sized version of the asset.
     static func imageData(for asset: PHAsset, targetPixel: CGFloat = ImageStore.storedMaxPixel) async -> Data? {
-        await withCheckedContinuation { continuation in
+        let image: UIImage? = await withCheckedContinuation { continuation in
             let options = PHImageRequestOptions()
             options.deliveryMode = .highQualityFormat   // one callback only
             options.resizeMode = .fast
@@ -103,9 +103,11 @@ enum AlbumSyncService {
                 contentMode: .aspectFit,
                 options: options
             ) { image, _ in
-                continuation.resume(returning: image?.jpegData(compressionQuality: 0.92))
+                continuation.resume(returning: image)
             }
         }
+        // Photos calls back on the main thread; encode elsewhere so syncing doesn't stutter the UI.
+        return await Task.detached(priority: .utility) { image?.jpegData(compressionQuality: 0.92) }.value
     }
 
     static func thumbnail(for assetID: String, side: CGFloat = 200) async -> UIImage? {

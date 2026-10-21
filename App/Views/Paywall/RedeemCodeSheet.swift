@@ -27,6 +27,8 @@ struct RedeemCodeSheet: View {
 
     var body: some View {
         NavigationStack {
+            // Scrolls: with the keyboard up on an SE or at large text sizes, nothing gets clipped.
+            ScrollView {
             VStack(spacing: 22) {
                 Image(systemName: "giftcard.fill")
                     .font(.system(size: 40, weight: .semibold))
@@ -36,6 +38,7 @@ struct RedeemCodeSheet: View {
                     .shadow(color: Brand.coral.opacity(0.5), radius: 16, y: 8)
                     .symbolEffect(.bounce, value: copied)
                     .padding(.top, 12)
+                    .accessibilityHidden(true)
 
                 VStack(spacing: 6) {
                     Text("Redeem a code").font(Brand.title(26))
@@ -45,7 +48,7 @@ struct RedeemCodeSheet: View {
                 }
 
                 TextField("ENTER CODE", text: $code)
-                    .font(.system(size: 24, weight: .bold, design: .monospaced))
+                    .font(.system(.title2, design: .monospaced).weight(.bold))
                     .multilineTextAlignment(.center)
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
@@ -57,12 +60,13 @@ struct RedeemCodeSheet: View {
                     .glass(cornerRadius: 20)
                     .overlay(alignment: .trailing) {
                         if code.isEmpty {
-                            Button {
-                                if let pasted = UIPasteboard.general.string { code = pasted }
-                            } label: {
-                                Image(systemName: "doc.on.clipboard").font(.headline)
+                            // System paste button: labelled for VoiceOver, no "Allow Paste" prompt.
+                            PasteButton(payloadType: String.self) { strings in
+                                code = strings.first ?? ""
                             }
-                            .padding(.trailing, 16)
+                            .labelStyle(.iconOnly)
+                            .buttonBorderShape(.circle)
+                            .padding(.trailing, 12)
                         }
                     }
 
@@ -71,10 +75,9 @@ struct RedeemCodeSheet: View {
                 }
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(cleanCode.count < 4)
-                .opacity(cleanCode.count < 4 ? 0.5 : 1)
 
                 if copied {
-                    Label("Code copied — paste it into Apple’s field", systemImage: "checkmark.circle.fill")
+                    Label("Code copied. Paste it into Apple’s field.", systemImage: "checkmark.circle.fill")
                         .font(Brand.caption)
                         .foregroundStyle(Brand.mint)
                         .transition(.scale.combined(with: .opacity))
@@ -83,14 +86,15 @@ struct RedeemCodeSheet: View {
                 Button("Use Apple’s redeem screen instead") { showAppleSheet = true }
                     .font(.system(.subheadline, design: .rounded).weight(.semibold))
 
-                Spacer()
-
                 Text("Codes are checked by Apple and linked to your Apple ID. Pro unlocks automatically when you come back to Framely.")
                     .font(Brand.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
+                    .padding(.top, 8)
             }
             .padding(24)
+            }
+            .scrollDismissesKeyboard(.interactively)
             .background(AnimatedBackground(tint: Brand.gold))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }

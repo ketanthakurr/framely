@@ -5,23 +5,25 @@ struct LockStudio: View {
     let set: PhotoSet
     @Binding var lock: LockScreenStyle
     let gate: FeatureGate
-    let tick: Int
     let choose: @MainActor (Bool, () -> Void) -> Void
 
     var body: some View {
         VStack(spacing: 22) {
-            LockScreenPreview(set: set, lock: lock, tick: tick)
+            VStack(spacing: 10) {
+                // The preview itself is pinned above the options in StyleStudioView.
+                // Said up front: users otherwise think the tint is a bug in Framely.
+                Label("Framely sends your original photo. iOS then shows every Lock Screen widget in a single tint, and no app can turn that off. For your photo in full color on the Lock Screen, use Rotating wallpaper.",
+                      systemImage: "info.circle")
+                    .font(Brand.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
 
             shapeSection
             lookSection
             layoutSection
             textSection
             detailsSection
-
-            Label("iOS always draws Lock Screen widgets in a tinted, see-through style. Bold, Poster and Sketch keep photos readable on any wallpaper.",
-                  systemImage: "info.circle")
-                .font(Brand.caption)
-                .foregroundStyle(.secondary)
         }
     }
 
@@ -99,7 +101,7 @@ struct LockStudio: View {
                         .glass(cornerRadius: 14)
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
-                Text("The main line also appears in the one-line widget above the clock.")
+                Text("The main line also appears in the small text widget above the clock.")
                     .font(Brand.caption).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -125,7 +127,7 @@ struct LockStudio: View {
                 Toggle(isOn: $lock.border) { Label("Outline", systemImage: "circle.dashed") }
                 HStack {
                     Label("Strength", systemImage: "circle.lefthalf.filled")
-                    Slider(value: $lock.intensity, in: 0.3...1.0)
+                    Slider(value: $lock.intensity, in: 0.3...1.0) { Text("Strength") }
                 }
             }
             .font(Brand.body)
@@ -165,6 +167,7 @@ struct LockScreenPreview: View {
     let set: PhotoSet
     let lock: LockScreenStyle
     let tick: Int
+    var height: CGFloat = 300
 
     @State private var images: [UIImage?] = [nil, nil, nil]
 
@@ -181,8 +184,11 @@ struct LockScreenPreview: View {
 
     var body: some View {
         ZStack {
-            // Wallpaper
-            PhotoBackdrop(item: set.cover)
+            // Wallpaper. In an overlay so the fill-sized photo can't widen the page:
+            // a too-wide preview made the whole sheet draggable sideways as well as up and down.
+            Color.clear
+                .overlay { PhotoBackdrop(item: set.cover) }
+                .clipped()
             LinearGradient(colors: [.black.opacity(0.25), .clear, .black.opacity(0.35)], startPoint: .top, endPoint: .bottom)
 
             VStack(spacing: 6) {
@@ -195,21 +201,26 @@ struct LockScreenPreview: View {
                     .padding(.top, -4)
 
                 HStack(spacing: 10) {
+                    // Max sizes, not fixed ones: on narrow phones the row shrinks instead of
+                    // widening the page.
                     vibrant(LockCircularView(content: content(0)))
-                        .frame(width: 64, height: 64)
+                        .frame(maxWidth: 64, maxHeight: 64)
+                        .aspectRatio(1, contentMode: .fit)
                     vibrant(LockCircularView(content: content(1)))
-                        .frame(width: 64, height: 64)
+                        .frame(maxWidth: 64, maxHeight: 64)
+                        .aspectRatio(1, contentMode: .fit)
                     vibrant(LockRectangularView(content: content(0)))
-                        .frame(width: 150, height: 64)
+                        .frame(maxWidth: 150, maxHeight: 64)
                 }
                 .padding(.top, 4)
                 Spacer()
             }
             .padding(.top, 26)
         }
-        .frame(height: 300)
+        .frame(maxWidth: .infinity)
+        .frame(height: height)
         .clipShape(RoundedRectangle(cornerRadius: 36, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 36, style: .continuous).strokeBorder(.white.opacity(0.35), lineWidth: 1))
+        .overlay { RoundedRectangle(cornerRadius: 36, style: .continuous).strokeBorder(.white.opacity(0.35), lineWidth: 1) }
         .shadow(color: .black.opacity(0.25), radius: 20, y: 10)
         .animation(Brand.spring, value: lock)
         .task(id: "\(tick)-\(lock.look.rawValue)") {
@@ -225,15 +236,14 @@ struct LockScreenPreview: View {
         }
     }
 
-    /// Brightness → opacity, tinted white: the Lock Screen "vibrant" look.
+    /// The Lock Screen "vibrant" look: white whose opacity follows brightness.
+    /// Screen-blending a black-and-white copy gives exactly that (bg·(1−L) + L) and, unlike the
+    /// old luminance-mask approach, can't turn a translucent backing circle into a solid white disc.
     private func vibrant<V: View>(_ view: V) -> some View {
-        let white = view
+        view
             .foregroundStyle(.white)
             .environment(\.colorScheme, .dark)
-        return ZStack {
-            white.opacity(0.001) // keeps layout
-            Color.white.opacity(0.92)
-                .mask { white.luminanceToAlpha() }
-        }
+            .grayscale(1)
+            .blendMode(.screen)
     }
 }

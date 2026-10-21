@@ -25,7 +25,7 @@ struct AlbumPickerSheet: View {
                     ContentUnavailableView {
                         Label("Photos access needed", systemImage: "photo.on.rectangle.angled")
                     } description: {
-                        Text("To keep a set in sync with an album, allow Framely to read your library in Settings. Hand-picking photos works without it.")
+                        Text("To keep a set in sync with an album, allow Framely to read your library in Settings. Picking photos by hand works without it.")
                     } actions: {
                         Button("Open Settings") {
                             if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
@@ -44,7 +44,7 @@ struct AlbumPickerSheet: View {
                                 AlbumCover(assetID: album.coverAssetID)
                                 VStack(alignment: .leading) {
                                     Text(album.title).font(Brand.headline)
-                                    Text("\(album.count) photos").font(Brand.caption).foregroundStyle(.secondary)
+                                    Text("^[\(album.count) photo](inflect: true)").font(Brand.caption).foregroundStyle(.secondary)
                                 }
                             }
                         }
@@ -62,7 +62,10 @@ struct AlbumPickerSheet: View {
                 if state == .ready {
                     Text("The newest \(store.gate.maxPhotos()) photos sync each time you open Framely.")
                         .font(Brand.caption).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                         .padding()
+                        .frame(maxWidth: .infinity)
+                        .background(.bar)
                 }
             }
         }
@@ -108,22 +111,28 @@ struct CaptionSheet: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 20) {
-                Thumbnail(item: item, maxPixel: 600)
-                    .frame(width: 180, height: 220)
-                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                    .shadow(radius: 12, y: 6)
-                TextField("Say something about this photo", text: $text, axis: .vertical)
-                    .font(Brand.body)
-                    .lineLimit(1...3)
-                    .focused($focused)
-                    .padding(16)
-                    .glass(cornerRadius: 18)
-                Text("Captions appear on widgets when “Show caption” is on in Style.")
-                    .font(Brand.caption).foregroundStyle(.secondary)
-                Spacer()
+            // Scrolls so the field stays reachable above the keyboard on small phones.
+            ScrollView {
+                VStack(spacing: 20) {
+                    Thumbnail(item: item, maxPixel: 600)
+                        .frame(width: 130, height: 160)
+                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .shadow(radius: 12, y: 6)
+                        .accessibilityHidden(true)
+                    TextField("Say something about this photo", text: $text, axis: .vertical)
+                        .font(Brand.body)
+                        .lineLimit(1...3)
+                        .focused($focused)
+                        .submitLabel(.done)
+                        .padding(16)
+                        .glass(cornerRadius: 18)
+                    Text("Captions appear on widgets when “Show caption” is on in Style.")
+                        .font(Brand.caption).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(20)
             }
-            .padding(20)
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Caption")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -152,7 +161,10 @@ struct PhotoViewer: View {
     @Environment(\.dismiss) private var dismiss
     @State private var current: UUID?
     @State private var dragY: CGFloat = 0
+    /// Locked on the first movement: vertical drags dismiss, horizontal ones page photos.
+    @State private var verticalDrag: Bool?
     @State private var captionTarget: PhotoItem?
+    @State private var deleteTarget: PhotoItem?
 
     private var photoSet: PhotoSet? { model.photoSet(id: setID) }
     private var photos: [PhotoItem] { photoSet?.photos ?? [] }
@@ -178,12 +190,18 @@ struct PhotoViewer: View {
             .scrollTargetBehavior(.paging)
             .scrollPosition(id: $current)
             .scrollIndicators(.hidden)
+            .scrollDisabled(verticalDrag == true)
             .offset(y: dragY)
             .scaleEffect(1 - min(0.15, abs(dragY) / 2000))
             .simultaneousGesture(
                 DragGesture()
-                    .onChanged { v in if abs(v.translation.height) > abs(v.translation.width) { dragY = v.translation.height } }
+                    .onChanged { v in
+                        if verticalDrag == nil { verticalDrag = abs(v.translation.height) > abs(v.translation.width) }
+                        if verticalDrag == true { dragY = v.translation.height }
+                    }
                     .onEnded { v in
+                        defer { verticalDrag = nil }
+                        guard verticalDrag == true else { return }
                         if abs(v.translation.height) > 140 { dismiss() } else { withAnimation(Brand.bouncy) { dragY = 0 } }
                     }
             )
@@ -195,6 +213,7 @@ struct PhotoViewer: View {
                         Image(systemName: "xmark").font(.headline).foregroundStyle(.white).frame(width: 44, height: 44)
                     }
                     .glassCircle()
+                    .accessibilityLabel("Close")
                 }
                 Spacer()
                 if let item = photos.first(where: { $0.id == current }) {
@@ -216,7 +235,16 @@ struct PhotoViewer: View {
             .opacity(dragY == 0 ? 1 : 0.3)
         }
         .onAppear { current = startAt.id }
+        .accessibilityAction(.escape) { dismiss() }
         .sheet(item: $captionTarget) { item in CaptionSheet(item: item, setID: setID) }
+        .confirmationDialog("Delete this photo?", isPresented: Binding(
+            get: { deleteTarget != nil },
+            set: { if !$0 { deleteTarget = nil } }
+        ), titleVisibility: .visible, presenting: deleteTarget) { item in
+            Button("Delete Photo", role: .destructive) { delete(item) }
+        } message: { _ in
+            Text("It’s removed from Framely and its widgets. Your Photos library isn’t affected.")
+        }
         .statusBarHidden()
     }
 }
@@ -235,16 +263,18 @@ extension PhotoViewer {
             viewerButton("Caption", symbol: "text.bubble") { captionTarget = item }
 
             if canRemove {
-                viewerButton("Remove", symbol: "trash") {
-                    let next = photos.firstIndex(where: { $0.id == item.id }).flatMap { i in
-                        photos.indices.contains(i + 1) ? photos[i + 1] : (i > 0 ? photos[i - 1] : nil)
-                    }
-                    model.deletePhotos([item.id], from: setID)
-                    if let next { current = next.id } else { dismiss() }
-                }
+                viewerButton("Delete", symbol: "trash") { deleteTarget = item }
             }
         }
         .padding(.top, 8)
+    }
+
+    private func delete(_ item: PhotoItem) {
+        let next = photos.firstIndex(where: { $0.id == item.id }).flatMap { i in
+            photos.indices.contains(i + 1) ? photos[i + 1] : (i > 0 ? photos[i - 1] : nil)
+        }
+        withAnimation(Brand.spring) { model.deletePhotos([item.id], from: setID) }
+        if let next { current = next.id } else { dismiss() }
     }
 
     private func viewerButton(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
@@ -262,6 +292,12 @@ extension PhotoViewer {
 private struct ViewerImage: View {
     let item: PhotoItem
     @State private var image: UIImage?
+
+    init(item: PhotoItem) {
+        self.item = item
+        // Start from the card-size copy the set screen already decoded, then sharpen.
+        _image = State(initialValue: ThumbnailCache.shared.cached(for: item, maxPixel: ThumbSize.card))
+    }
 
     var body: some View {
         Group {

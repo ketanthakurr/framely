@@ -22,22 +22,31 @@ struct WallpaperGuideView: View {
             VStack(spacing: 18) {
                 hero
 
-                if !store.gate.wallpaperShortcut {
+                let locked = !store.gate.wallpaperShortcut
+                if locked {
                     Button { router.showPaywall = true } label: {
                         HStack { Image(systemName: "crown.fill"); Text("Unlock with Framely Pro") }
                     }
                     .buttonStyle(PrimaryButtonStyle(gradient: Brand.proGradient))
+
+                    Label("“Get Framely Photo” works with Framely Pro. Without it, the automation stops at step 2.",
+                          systemImage: "info.circle")
+                        .font(Brand.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 ForEach(Array(steps.enumerated()), id: \.offset) { i, step in
                     GuideStepCard(number: i + 1, step: step)
                 }
 
-                Button { openURL(AppLinks.shortcutsApp) } label: {
-                    Label("Open Shortcuts", systemImage: "arrow.up.forward.app.fill")
+                // Only the main call to action once it works: free users get the Pro button above.
+                if !locked {
+                    Button { openURL(AppLinks.shortcutsApp) } label: {
+                        Label("Open Shortcuts", systemImage: "arrow.up.forward.app.fill")
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .padding(.top, 6)
                 }
-                .buttonStyle(PrimaryButtonStyle())
-                .padding(.top, 6)
 
                 Text("Apple doesn’t let apps change your wallpaper directly. Shortcuts can, with your permission, so this is the supported way to do it.")
                     .font(Brand.caption)
@@ -54,12 +63,14 @@ struct WallpaperGuideView: View {
     private var hero: some View {
         PhoneMockup(accent: Brand.coral)
             .frame(height: 220)
+            .accessibilityHidden(true)
             .padding(.vertical, 10)
     }
 }
 
 /// Where Framely widgets can go.
 struct WidgetGuideView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var tab = 0
 
     private let sections: [(String, String, [GuideStep])] = [
@@ -85,19 +96,20 @@ struct WidgetGuideView: View {
             VStack(spacing: 18) {
                 Picker("Place", selection: $tab.animation(Brand.spring)) {
                     ForEach(sections.indices, id: \.self) { i in
-                        Label(sections[i].0, systemImage: sections[i].1).tag(i)
+                        Text(sections[i].0).tag(i)
                     }
                 }
                 .pickerStyle(.segmented)
 
                 PhoneMockup(accent: [Brand.lavender, Brand.coral, Color.red][tab], mode: tab)
                     .frame(height: 220)
+                    .accessibilityHidden(true)
                     .id(tab)
                     .transition(.blurReplace)
 
                 ForEach(Array(sections[tab].2.enumerated()), id: \.element.title) { i, step in
                     GuideStepCard(number: i + 1, step: step)
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                        .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
                 }
             }
             .padding(20)
@@ -151,13 +163,14 @@ struct PhoneMockup: View {
             if mode == 2 {
                 RoundedRectangle(cornerRadius: 30, style: .continuous)
                     .fill(Color.black)
-                    .frame(width: 300, height: 150)
+                    .frame(maxWidth: 300)
+                    .aspectRatio(2, contentMode: .fit)
                     .overlay {
                         HStack(spacing: 12) {
                             RoundedRectangle(cornerRadius: 20).fill(accent.gradient).frame(width: 120, height: 120)
-                                .overlay(Image(systemName: "photo.fill").font(.largeTitle).foregroundStyle(.white.opacity(0.8)))
+                                .overlay { Image(systemName: "photo.fill").font(.largeTitle).foregroundStyle(.white.opacity(0.8)) }
                             RoundedRectangle(cornerRadius: 20).fill(Color.white.opacity(0.12)).frame(width: 120, height: 120)
-                                .overlay(Text("9:41").font(.system(size: 34, weight: .bold, design: .rounded)).foregroundStyle(.white))
+                                .overlay { Text("9:41").font(.system(size: 34, weight: .bold, design: .rounded)).foregroundStyle(.white) }
                         }
                     }
             } else {
@@ -190,7 +203,7 @@ struct PhoneMockup: View {
                             }
                         }
                     }
-                    .overlay(RoundedRectangle(cornerRadius: 34, style: .continuous).strokeBorder(.white.opacity(0.4), lineWidth: 3))
+                    .overlay { RoundedRectangle(cornerRadius: 34, style: .continuous).strokeBorder(.white.opacity(0.4), lineWidth: 3) }
             }
         }
         .shadow(color: accent.opacity(0.4), radius: 24, y: 12)

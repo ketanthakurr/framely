@@ -12,7 +12,12 @@ enum Brand {
     static let gradient = LinearGradient(colors: [coral, lavender, mint], startPoint: .topLeading, endPoint: .bottomTrailing)
     static let proGradient = LinearGradient(colors: [gold, coral], startPoint: .topLeading, endPoint: .bottomTrailing)
 
-    static func title(_ size: CGFloat = 34) -> Font { .system(size: size, weight: .bold, design: .rounded) }
+    /// Display titles. The size is the default; it follows the user's text size (capped, so
+    /// accessibility sizes don't blow a 30pt title up to 100pt).
+    static func title(_ size: CGFloat = 34) -> Font {
+        let scaled = UIFontMetrics(forTextStyle: .title1).scaledValue(for: size)
+        return .system(size: min(scaled, size * 1.5), weight: .bold, design: .rounded)
+    }
     static let headline = Font.system(.headline, design: .rounded)
     static let body = Font.system(.body, design: .rounded)
     static let caption = Font.system(.caption, design: .rounded).weight(.medium)
@@ -91,15 +96,27 @@ struct PrimaryButtonStyle: ButtonStyle {
     var gradient: LinearGradient = Brand.gradient
 
     func makeBody(configuration: Configuration) -> some View {
+        PrimaryButtonBody(configuration: configuration, gradient: gradient)
+    }
+}
+
+/// Separate view so it can read `isEnabled`: a disabled button must look disabled.
+private struct PrimaryButtonBody: View {
+    let configuration: ButtonStyle.Configuration
+    let gradient: LinearGradient
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
         configuration.label
             .font(.system(.headline, design: .rounded))
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 17)
             .background(gradient, in: Capsule())
-            .overlay(Capsule().strokeBorder(.white.opacity(0.3), lineWidth: 1))
+            .overlay { Capsule().strokeBorder(.white.opacity(0.3), lineWidth: 1) }
             .shadow(color: Brand.lavender.opacity(0.45), radius: configuration.isPressed ? 6 : 16, y: configuration.isPressed ? 3 : 8)
             .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .opacity(isEnabled ? 1 : 0.45)
             .animation(Brand.bouncy, value: configuration.isPressed)
     }
 }
@@ -130,13 +147,8 @@ struct Wordmark: View {
 
     var body: some View {
         HStack(spacing: size * 0.28) {
-            Image(systemName: "photo.stack.fill")
-                .font(.system(size: size * 0.5, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(width: size * 1.05, height: size * 1.05)
-                .background(Brand.gradient, in: RoundedRectangle(cornerRadius: size * 0.3, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: size * 0.3, style: .continuous).strokeBorder(.white.opacity(0.5), lineWidth: 1))
-                .shadow(color: Brand.lavender.opacity(0.45), radius: 8, y: 4)
+            ArchMark(height: size * 1.25)
+                .shadow(color: Brand.ink.opacity(0.3), radius: 6, y: 3)
 
             Text("Framely")
                 .font(.system(size: size, weight: .heavy, design: .rounded))
@@ -151,6 +163,97 @@ struct Wordmark: View {
     }
 }
 
+// MARK: - Arch mark (the app icon, drawn as vectors)
+
+/// Arch with a round top and softly rounded bottom corners — the shape of the app icon's frame.
+struct ArchShape: Shape {
+    /// Bottom corner radius as a fraction of the width.
+    var corner: CGFloat = 0.095
+
+    func path(in r: CGRect) -> Path {
+        let rad = r.width / 2
+        let c = r.width * corner
+        var p = Path()
+        p.move(to: CGPoint(x: r.minX, y: r.minY + rad))
+        p.addArc(center: CGPoint(x: r.midX, y: r.minY + rad), radius: rad, startAngle: .degrees(180), endAngle: .degrees(0), clockwise: false)
+        p.addLine(to: CGPoint(x: r.maxX, y: r.maxY - c))
+        p.addQuadCurve(to: CGPoint(x: r.maxX - c, y: r.maxY), control: CGPoint(x: r.maxX, y: r.maxY))
+        p.addLine(to: CGPoint(x: r.minX + c, y: r.maxY))
+        p.addQuadCurve(to: CGPoint(x: r.minX, y: r.maxY - c), control: CGPoint(x: r.minX, y: r.maxY))
+        p.closeSubpath()
+        return p
+    }
+}
+
+/// The Framely logo: a cream arch frame around a sunset. Geometry matches `Design/make-icon.swift`.
+struct ArchMark: View {
+    var height: CGFloat
+    /// 0 = sun hidden behind the hills, 1 = fully risen. Animatable for the splash.
+    var sunProgress: CGFloat = 1
+
+    private static let aspect: CGFloat = 420.0 / 640.0
+    private static let sky = LinearGradient(
+        stops: [
+            .init(color: Color(hex: "#FF9E7D"), location: 0),
+            .init(color: Color(hex: "#FF8A7A"), location: 0.35),
+            .init(color: Color(hex: "#F27F9C"), location: 0.62),
+            .init(color: Color(hex: "#B58BD6"), location: 1),
+        ],
+        startPoint: .top, endPoint: .bottom
+    )
+
+    var body: some View {
+        let w = height * Self.aspect
+        let inset = w * 32 / 420
+        ZStack {
+            ArchShape().fill(Color(hex: "#FBF6EE"))
+            scene
+                .clipShape(ArchShape(corner: 0.04))
+                .padding(inset)
+        }
+        .frame(width: w, height: height)
+        .accessibilityHidden(true)
+    }
+
+    private var scene: some View {
+        GeometryReader { geo in
+            let w = geo.size.width, h = geo.size.height
+            let sunR = w * 0.208
+            ZStack(alignment: .topLeading) {
+                Self.sky
+                Circle()
+                    .fill(RadialGradient(colors: [Color(hex: "#FFE6A3").opacity(0.55), .clear], center: .center, startRadius: sunR * 0.8, endRadius: sunR * 2))
+                    .frame(width: sunR * 4, height: sunR * 4)
+                    .position(x: w / 2, y: h * 0.566 + (1 - sunProgress) * h * 0.4)
+                    .opacity(sunProgress)
+                Circle()
+                    .fill(Color(hex: "#FFD36E"))
+                    .frame(width: sunR * 2, height: sunR * 2)
+                    .position(x: w / 2, y: h * 0.566 + (1 - sunProgress) * h * 0.4)
+                Hill(start: 0.743, end: 0.677, c1: CGPoint(x: 0.185, y: 0.613), c2: CGPoint(x: 0.635, y: 0.8125))
+                    .fill(Color(hex: "#8E7BC8"))
+                Hill(start: 0.830, end: 0.8125, c1: CGPoint(x: 0.382, y: 0.934), c2: CGPoint(x: 0.635, y: 0.726))
+                    .fill(LinearGradient(colors: [Color(hex: "#7FE0CF"), Color(hex: "#4FB9B0")], startPoint: .top, endPoint: .bottom))
+            }
+        }
+    }
+
+    /// A hill filled to the bottom edge; points are in unit coordinates of the window.
+    private struct Hill: Shape {
+        var start: CGFloat, end: CGFloat, c1: CGPoint, c2: CGPoint
+        func path(in r: CGRect) -> Path {
+            func pt(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: r.minX + x * r.width, y: r.minY + y * r.height) }
+            var p = Path()
+            p.move(to: pt(0, start))
+            p.addCurve(to: pt(1, end), control1: pt(c1.x, c1.y), control2: pt(c2.x, c2.y))
+            p.addLine(to: pt(1, 1))
+            p.addLine(to: pt(0, 1))
+            p.closeSubpath()
+            return p
+        }
+    }
+}
+
 // MARK: - Small components
 
 struct ProBadge: View {
@@ -159,7 +262,7 @@ struct ProBadge: View {
             Image(systemName: "crown.fill")
             Text("PRO")
         }
-        .font(.system(size: 9, weight: .heavy, design: .rounded))
+        .font(.system(.caption2, design: .rounded).weight(.heavy))
         .foregroundStyle(.black.opacity(0.75))
         .padding(.horizontal, 6)
         .padding(.vertical, 3)
@@ -197,10 +300,11 @@ struct ChoiceChip: View {
         HStack(spacing: 6) {
             if let symbol { Image(systemName: symbol).font(.system(size: 13, weight: .semibold)) }
             Text(title).font(.system(.subheadline, design: .rounded).weight(.semibold))
-            if locked { Image(systemName: "lock.fill").font(.system(size: 10)).opacity(0.7) }
+            if locked { Image(systemName: "lock.fill").font(.caption2).opacity(0.7) }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+        .frame(minHeight: 44)
         .foregroundStyle(selected ? .white : .primary)
         .background {
             if selected {
@@ -210,5 +314,8 @@ struct ChoiceChip: View {
         }
         .glassCapsule(interactive: true)
         .animation(Brand.spring, value: selected)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityHint(locked ? "Requires Framely Pro" : "")
     }
 }

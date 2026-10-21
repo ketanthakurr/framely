@@ -66,24 +66,40 @@ struct PhotoBackdrop: View {
     let item: PhotoItem?
     @State private var image: UIImage?
 
+    init(item: PhotoItem?) {
+        self.item = item
+        // Already decoded? Show it on the first frame instead of fading in from black.
+        _image = State(initialValue: item.flatMap { ThumbnailCache.shared.cached(for: $0, maxPixel: ThumbSize.backdrop) })
+    }
+
     var body: some View {
-        ZStack {
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .blur(radius: 50)
-                    .scaleEffect(1.3)
-                    .transition(.opacity)
-                    .id(image)
+        // The fill-sized photo lives in an overlay so it can never widen whatever contains it.
+        Rectangle().fill(.black.opacity(0.25))
+            .background {
+                Color.clear.overlay {
+                    if let image {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .blur(radius: 50)
+                            .scaleEffect(1.3)
+                            .transition(.opacity)
+                            .id(image)
+                    }
+                }
+                .clipped()
+                // Dark base: with no photo (or before it decodes) white text stays readable in Light Mode.
+                .background(Brand.ink)
             }
-            Rectangle().fill(.black.opacity(0.25))
-        }
-        .ignoresSafeArea()
-        .task(id: item?.id) {
-            guard let item else { return }
-            let loaded = await ThumbnailCache.shared.image(for: item, maxPixel: 300)
-            withAnimation(.easeInOut(duration: 0.8)) { image = loaded }
-        }
+            .ignoresSafeArea()
+            .task(id: item?.id) {
+                guard let item else { image = nil; return }
+                if let hit = ThumbnailCache.shared.cached(for: item, maxPixel: ThumbSize.backdrop) {
+                    withAnimation(.easeInOut(duration: 0.4)) { image = hit }
+                    return
+                }
+                let loaded = await ThumbnailCache.shared.image(for: item, maxPixel: ThumbSize.backdrop)
+                withAnimation(.easeInOut(duration: 0.4)) { image = loaded }
+            }
     }
 }

@@ -64,8 +64,7 @@ All limits live in **`Shared/Models/ProConfig.swift`**: number of sets, photos p
 
 1. **Create the app** with bundle ID `com.widget.framely`, iPhone only.
 2. **Subscriptions:** create a group called **Framely Pro** with two auto-renewable subscriptions:
-   - `com.widget.framely.pro.monthly`
-   - `com.widget.framely.pro.yearly`
+   - `PRO_0001` (monthly) and `PRO_0002` (yearly), plus the non-consumable `LIFETIME_0001` (lifetime)
 
    Set your prices (e.g. ₹99/mo, ₹499/yr). Add a free trial as an Introductory Offer if you want one; the paywall shows it automatically.
 3. **Giving Pro away for free (Offer Codes):**

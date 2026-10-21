@@ -14,13 +14,7 @@ struct PhotoProvider: AppIntentTimelineProvider {
     }
 
     private func timeline(_ configuration: PhotoWidgetIntent, isPreview: Bool) -> Timeline<SetEntry> {
-        let base = WidgetData.timeline(for: configuration.photoSet, isPreview: isPreview)
-        let entries = base.entries.map { entry -> SetEntry in
-            var e = entry
-            e.showNextButton = configuration.showNextButton
-            return e
-        }
-        return Timeline(entries: entries, policy: base.policy)
+        WidgetData.timeline(for: configuration.photoSet, isPreview: isPreview)
     }
 }
 
@@ -31,7 +25,7 @@ struct PhotoWidgetView: View {
     var body: some View {
         if let set = entry.set, let item = entry.photo() {
             let content = FramedPhotoContent(
-                image: ImageStore.image(for: item, maxPixel: family.maxPixel, filter: entry.style.filter),
+                image: ImageStore.image(for: item, maxPixel: family.maxPixel, filter: entry.style.filter, persist: true),
                 item: item,
                 style: entry.style,
                 size: FrameSize(family)
@@ -39,13 +33,6 @@ struct PhotoWidgetView: View {
             FramedPhotoView(content: content)
                 .id(item.id)
                 .transition(.push(from: .trailing))
-                .overlay(alignment: .topTrailing) {
-                    if entry.showNextButton && set.photos.count > 1 {
-                        Button(intent: NextPhotoIntent(setID: set.id)) { NextPhotoGlyph() }
-                            .buttonStyle(.plain)
-                            .padding(8)
-                    }
-                }
                 .containerBackground(for: .widget) { FramedPhotoBackground(content: content) }
                 .widgetURL(DeepLink.set(set.id).url)
         } else {
@@ -62,7 +49,7 @@ struct PhotoWidget: Widget {
             PhotoWidgetView(entry: entry)
         }
         .configurationDisplayName("Photo")
-        .description("Your photos, rotating on your schedule. Tap the arrow for the next one.")
+        .description("Your photos, rotating on your schedule.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
         .contentMarginsDisabled()
     }

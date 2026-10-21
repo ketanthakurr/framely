@@ -20,7 +20,10 @@ struct PaywallView: View {
         ("timer", "Faster rotation", "New photo every 5, 15 or 30 minutes"),
     ]
 
-    private var selectedProduct: Product? { store.products.first { $0.id == selectedID } }
+    /// Falls back to the first plan Apple returned, so Continue never points at a missing product.
+    private var selectedProduct: Product? {
+        store.products.first { $0.id == selectedID } ?? store.products.first
+    }
 
     var body: some View {
         ZStack {
@@ -66,15 +69,17 @@ struct PaywallView: View {
         .alert("Heads up", isPresented: Binding(get: { store.lastError != nil }, set: { if !$0 { store.lastError = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(store.lastError ?? "") }
-        .task {
-            if store.products.isEmpty { await store.loadProducts() }
+        .task { heroImages = await loadHeroImages() }
+        // Keyed on the products, so trial text also appears when they arrive after the paywall
+        // opened (or after "Try again"). A trial must never be bought under a plain "Continue".
+        .task(id: store.products.map(\.id)) {
+            if store.products.isEmpty, store.loadState != .loading { await store.loadProducts() }
             for product in store.products {
-                if let text = await store.introOfferText(for: product) { trialText[product.id] = text }
+                trialText[product.id] = await store.introOfferText(for: product)
             }
-            heroImages = await loadHeroImages()
         }
         .onAppear { withAnimation(Brand.bouncy.delay(0.1)) { appeared = true } }
-        .sensoryFeedback(.success, trigger: store.isPro)
+        .sensoryFeedback(trigger: store.isPro) { _, isPro in isPro ? .success : nil }
     }
 
     // MARK: Pieces
@@ -85,7 +90,7 @@ struct PaywallView: View {
                 Spacer()
                 Button { dismiss() } label: {
                     Image(systemName: "xmark").font(.system(size: 15, weight: .bold)).foregroundStyle(.secondary)
-                        .frame(width: 36, height: 36)
+                        .frame(width: 44, height: 44)
                 }
                 .glassCircle()
                 .accessibilityLabel("Close")
@@ -121,9 +126,10 @@ struct PaywallView: View {
         switch store.loadState {
         case .loading, .idle:
             ProgressView().padding()
-        case .failed:
+        case .failed(let reason):
             VStack(spacing: 10) {
                 Text("Couldn’t reach the App Store.").font(Brand.body)
+                Text(reason).font(Brand.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 Button("Try again") { Task { await store.loadProducts() } }
             }
             .padding()
@@ -133,16 +139,24 @@ struct PaywallView: View {
                     Button { withAnimation(Brand.spring) { selectedID = product.id } } label: {
                         PlanCard(
                             product: product,
-                            selected: selectedID == product.id,
-                            badge: product.id == ProConfig.yearlyProductID ? store.yearlySavingsPercent.map { "Save \($0)%" } ?? "Best value" : nil,
+                            selected: selectedProduct?.id == product.id,
+                            badge: badge(for: product),
                             trial: trialText[product.id]
                         )
                     }
                     .buttonStyle(.plain)
-                    .accessibilityAddTraits(selectedID == product.id ? .isSelected : [])
+                    .accessibilityAddTraits(selectedProduct?.id == product.id ? .isSelected : [])
                 }
             }
             .sensoryFeedback(.selection, trigger: selectedID)
+        }
+    }
+
+    private func badge(for product: Product) -> String? {
+        switch product.id {
+        case ProConfig.yearlyProductID: store.yearlySavingsPercent.map { "Save \($0)%" } ?? "Best value"
+        case ProConfig.lifetimeProductID: "Pay once"
+        default: nil
         }
     }
 
@@ -157,12 +171,19 @@ struct PaywallView: View {
                 if store.isPurchasing {
                     ProgressView().tint(.white)
                 } else {
-                    Text(trialText[selectedID] != nil ? "Start Free Trial" : "Continue")
+                    Text(purchaseTitle)
                 }
             }
         }
         .buttonStyle(PrimaryButtonStyle())
         .disabled(selectedProduct == nil || store.isPurchasing)
+    }
+
+    private var purchaseTitle: String {
+        guard let product = selectedProduct else {
+            return store.loadState == .loaded ? "Plans unavailable" : "Loading plans…"
+        }
+        return trialText[product.id] != nil ? "Start Free Trial" : "Continue"
     }
 
     private var activeCard: some View {
@@ -172,7 +193,10 @@ struct PaywallView: View {
                 .foregroundStyle(Brand.proGradient)
                 .symbolEffect(.bounce, value: appeared)
             Text("You’re Pro ✨").font(Brand.title(24))
-            if let date = store.renewalDate {
+            if store.hasLifetime {
+                Text("Lifetime access. Nothing to renew.")
+                    .font(Brand.caption).foregroundStyle(.secondary)
+            } else if let date = store.renewalDate {
                 Text("Renews or ends \(date.formatted(date: .abbreviated, time: .omitted))")
                     .font(Brand.caption).foregroundStyle(.secondary)
             }
@@ -186,13 +210,14 @@ struct PaywallView: View {
         VStack(spacing: 12) {
             HStack(spacing: 18) {
                 Button("Restore") { Task { await store.restore() } }
+                    .disabled(store.isRestoring)
                 Button("Redeem Code") { showRedeem = true }
             }
             .font(.system(.subheadline, design: .rounded).weight(.semibold))
 
             // Required disclosure for auto-renewable subscriptions (App Review 3.1.2).
-            Text("Subscriptions renew automatically at the price shown unless cancelled at least 24 hours before the end of the current period. Payment is charged to your Apple ID. Manage or cancel anytime in Settings › Apple ID › Subscriptions. Any unused part of a free trial is forfeited when you subscribe.")
-                .font(.system(size: 11, design: .rounded))
+            Text("Subscriptions renew automatically at the price shown unless cancelled at least 24 hours before the end of the current period. Payment is charged to your Apple ID. Manage or cancel anytime in Settings › Apple ID › Subscriptions. Any unused part of a free trial is forfeited when you subscribe. Lifetime is a one-time purchase that doesn’t renew.")
+                .font(.system(.caption, design: .rounded))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
@@ -200,7 +225,7 @@ struct PaywallView: View {
                 Link("Terms of Use", destination: AppLinks.termsOfUse)
                 Link("Privacy Policy", destination: AppLinks.privacyPolicy)
             }
-            .font(.system(size: 12, weight: .medium, design: .rounded))
+            .font(.system(.footnote, design: .rounded).weight(.medium))
         }
         .padding(.top, 4)
     }
@@ -222,7 +247,19 @@ private struct PlanCard: View {
     let trial: String?
 
     private var period: String {
-        product.id == ProConfig.yearlyProductID ? "Yearly" : "Monthly"
+        switch product.id {
+        case ProConfig.yearlyProductID: "Yearly"
+        case ProConfig.lifetimeProductID: "Lifetime"
+        default: "Monthly"
+        }
+    }
+
+    private var priceUnit: String {
+        switch product.id {
+        case ProConfig.yearlyProductID: "per year"
+        case ProConfig.lifetimeProductID: "one time"
+        default: "per month"
+        }
     }
 
     private var perMonth: String? {
@@ -242,7 +279,7 @@ private struct PlanCard: View {
                     Text(period).font(Brand.headline)
                     if let badge {
                         Text(badge)
-                            .font(.system(size: 10, weight: .heavy, design: .rounded))
+                            .font(.system(.caption2, design: .rounded).weight(.heavy))
                             .padding(.horizontal, 7).padding(.vertical, 3)
                             .background(Brand.proGradient, in: Capsule())
                             .foregroundStyle(.black.opacity(0.75))
@@ -257,7 +294,7 @@ private struct PlanCard: View {
             Spacer()
             VStack(alignment: .trailing, spacing: 1) {
                 Text(product.displayPrice).font(Brand.headline)
-                Text(product.id == ProConfig.yearlyProductID ? "per year" : "per month")
+                Text(priceUnit)
                     .font(Brand.caption).foregroundStyle(.secondary)
             }
         }

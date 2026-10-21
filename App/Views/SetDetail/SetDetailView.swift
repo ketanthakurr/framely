@@ -11,15 +11,19 @@ struct SetDetailView: View {
 
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var showPicker = false
-    @State private var showStyle = false
+    @State private var showStyle = DebugLaunch.lockStudio
     @State private var showAlbums = false
     @State private var showRename = false
     @State private var confirmDelete = false
+    @State private var confirmDeletePhotos = false
     @State private var topPhoto: PhotoItem?
     @State private var selecting = false
     @State private var selection: Set<UUID> = []
     @State private var captionTarget: PhotoItem?
     @State private var viewerItem: PhotoItem?
+    /// The page stops scrolling while a photo is being reordered or the photo stack swiped sideways.
+    @State private var reordering = false
+    @State private var cardSwiping = false
     @State private var customValue = ""
     @State private var customUnit: TimeUnit = .minutes
     @FocusState private var customFocused: Bool
@@ -27,11 +31,12 @@ struct SetDetailView: View {
     enum TimeUnit: Int, CaseIterable, Identifiable {
         case minutes = 1, hours = 60, days = 1440
         var id: Int { rawValue }
-        var title: String {
+        /// "1 hour" vs "2 hours": follows the number typed next to it.
+        func title(_ count: Int) -> String {
             switch self {
-            case .minutes: "minutes"
-            case .hours: "hours"
-            case .days: "days"
+            case .minutes: count == 1 ? "minute" : "minutes"
+            case .hours: count == 1 ? "hour" : "hours"
+            case .days: count == 1 ? "day" : "days"
             }
         }
     }
@@ -47,7 +52,8 @@ struct SetDetailView: View {
                 ContentUnavailableView("Set not found", systemImage: "questionmark.folder")
             }
         }
-        .background(PhotoBackdrop(item: topPhoto ?? set?.cover).overlay(AnimatedBackground().opacity(0.35)))
+        // Always dark: the title and hints on this screen are white, also in Light Mode.
+        .background(PhotoBackdrop(item: topPhoto ?? set?.cover).overlay { AnimatedBackground().opacity(0.35).environment(\.colorScheme, .dark) })
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
         .photosPicker(
@@ -90,7 +96,7 @@ struct SetDetailView: View {
                     emptyState
                 } else {
                     VStack(spacing: 14) {
-                        CardStack(photos: Array(set.photos.prefix(8))) { top in
+                        CardStack(photos: Array(set.photos.prefix(8)), isSwiping: $cardSwiping) { top in
                             topPhoto = top
                         }
                         .frame(height: 380)
@@ -111,6 +117,7 @@ struct SetDetailView: View {
             .padding(.bottom, 60)
         }
         .scrollIndicators(.hidden)
+        .scrollDisabled(reordering || cardSwiping)
     }
 
     private func titleBlock(_ set: PhotoSet) -> some View {
@@ -122,7 +129,7 @@ struct SetDetailView: View {
                 .background(Brand.gradient, in: Circle())
             Text(set.name).font(Brand.title(30)).foregroundStyle(.white)
             HStack(spacing: 6) {
-                Text("\(set.photos.count) photos")
+                Text("^[\(set.photos.count) photo](inflect: true)")
                 if case let .album(_, title) = set.source {
                     Text("·")
                     Label(title, systemImage: "arrow.triangle.2.circlepath")
@@ -177,15 +184,18 @@ struct SetDetailView: View {
         let next = PhotoScheduler.nextChange(after: .now, schedule: schedule)
         return VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Label("Changes every…", systemImage: "timer")
+                Label("New photo every", systemImage: "timer")
                     .font(Brand.headline)
                 Spacer()
-                Text(RotationInterval.shortTitle(minutes: schedule.minutes))
+                // Always the effective (Pro-gated) interval: the same tag the Home card shows.
+                Text(schedule.shortTitle)
                     .font(.system(.subheadline, design: .rounded).weight(.bold))
+                    .lineLimit(1)
                     .contentTransition(.numericText())
                     .padding(.horizontal, 10).padding(.vertical, 5)
                     .background(Brand.gradient.opacity(0.9), in: Capsule())
                     .foregroundStyle(.white)
+                    .accessibilityLabel(schedule.title)
             }
 
             // Defaults
@@ -201,7 +211,7 @@ struct SetDetailView: View {
                             withAnimation(Brand.spring) { model.update(s) }
                         } label: {
                             ChoiceChip(title: interval.shortTitle,
-                                       selected: set.customMinutes == nil && set.interval == interval,
+                                       selected: schedule.minutes == interval.rawValue,
                                        locked: !allowed)
                         }
                         .buttonStyle(.plain)
@@ -211,7 +221,19 @@ struct SetDetailView: View {
             }
             .scrollIndicators(.hidden)
 
-            customRow(set)
+            customRow(set, effective: schedule.minutes)
+
+            if set.intervalMinutes != schedule.minutes {
+                // Saved while on Pro (or a tester build): the widget falls back to the free limit.
+                Button { router.showPaywall = true } label: {
+                    Label("\(RotationInterval.everyTitle(minutes: set.intervalMinutes)) needs Pro. Widgets use \(schedule.title.lowercased()) for now.",
+                          systemImage: "crown.fill")
+                        .font(Brand.caption)
+                        .multilineTextAlignment(.leading)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+            }
 
             Divider().opacity(0.5)
 
@@ -241,11 +263,12 @@ struct SetDetailView: View {
                 get: { set.order },
                 set: { var s = set; s.order = $0; model.update(s) }
             )) {
-                ForEach(PhotoOrder.allCases) { Label($0.title, systemImage: $0.symbol).tag($0) }
+                // Text only: segmented controls drop the title of a Label and show a bare icon.
+                ForEach(PhotoOrder.allCases) { Text($0.title).tag($0) }
             }
             .pickerStyle(.segmented)
 
-            Text("iOS decides the exact moment widgets refresh, so changes can land a little late — especially in Low Power Mode.")
+            Text("iOS decides the exact moment widgets refresh, so changes can land a little late, especially in Low Power Mode.")
                 .font(Brand.caption)
                 .foregroundStyle(.secondary)
         }
@@ -269,20 +292,19 @@ struct SetDetailView: View {
         return n * customUnit.rawValue
     }
 
-    private func customRow(_ set: PhotoSet) -> some View {
+    private func customRow(_ set: PhotoSet, effective: Int) -> some View {
         let total = customTotal
         let tooShort = (total ?? Int.max) < ProConfig.absoluteMinimumMinutes
         let needsPro = total.map { !gate.allows(minutes: $0) } ?? false
-        let isCurrent = total != nil && total == set.intervalMinutes
+        let isCurrent = total != nil && total == effective
 
         return VStack(alignment: .leading, spacing: 8) {
             Text("Or set your own")
                 .font(Brand.caption)
                 .foregroundStyle(.secondary)
 
+            // No "Every" prefix: the card's title already says it, and the row must fit an SE.
             HStack(spacing: 10) {
-                Text("Every").font(Brand.headline)
-
                 TextField("45", text: $customValue)
                     .keyboardType(.numberPad)
                     .focused($customFocused)
@@ -297,7 +319,7 @@ struct SetDetailView: View {
                     }
 
                 Picker("Unit", selection: $customUnit) {
-                    ForEach(TimeUnit.allCases) { Text($0.title).lineLimit(1).tag($0) }
+                    ForEach(TimeUnit.allCases) { Text($0.title(Int(customValue) ?? 2)).lineLimit(1).tag($0) }
                 }
                 .pickerStyle(.menu)
                 .tint(Color.primary)
@@ -311,20 +333,20 @@ struct SetDetailView: View {
                     Image(systemName: isCurrent ? "checkmark" : "arrow.right")
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(.white)
-                        .frame(width: 40, height: 40)
+                        .frame(width: 44, height: 44)
                         .background(Brand.gradient, in: Circle())
                         .contentTransition(.symbolEffect(.replace))
                 }
                 .disabled(total == nil || tooShort || isCurrent)
                 .opacity(total == nil || tooShort ? 0.4 : 1)
-                .accessibilityLabel("Set custom interval")
+                .accessibilityLabel(isCurrent ? "Custom interval in use" : "Use custom interval")
             }
 
             if tooShort {
                 Label("The shortest is \(RotationInterval.longTitle(minutes: ProConfig.absoluteMinimumMinutes))", systemImage: "exclamationmark.triangle.fill")
                     .font(Brand.caption).foregroundStyle(.orange)
             } else if needsPro {
-                Label("Faster than every hour is part of Pro", systemImage: "crown.fill")
+                Label("Faster than \(RotationInterval.everyTitle(minutes: ProConfig.freeMinimumMinutes).lowercased()) is part of Pro", systemImage: "crown.fill")
                     .font(Brand.caption).foregroundStyle(.secondary)
             }
         }
@@ -335,8 +357,8 @@ struct SetDetailView: View {
                     .fontWeight(.semibold)
             }
         }
-        .onAppear { if customValue.isEmpty { prefillCustom(minutes: set.intervalMinutes) } }
-        .onChange(of: set.intervalMinutes) { _, newValue in
+        .onAppear { if customValue.isEmpty { prefillCustom(minutes: effective) } }
+        .onChange(of: effective) { _, newValue in
             if !customFocused { prefillCustom(minutes: newValue) }
         }
         .animation(Brand.spring, value: tooShort)
@@ -379,8 +401,6 @@ struct SetDetailView: View {
 
     // MARK: Grid
 
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 3)
-
     @ViewBuilder
     private func photoGrid(_ set: PhotoSet) -> some View {
         if !set.photos.isEmpty {
@@ -390,11 +410,7 @@ struct SetDetailView: View {
                     Spacer()
                     if selecting && !selection.isEmpty {
                         Button(role: .destructive) {
-                            withAnimation(Brand.spring) {
-                                model.deletePhotos(selection, from: setID)
-                                selection = []
-                                selecting = false
-                            }
+                            confirmDeletePhotos = true
                         } label: {
                             Label("Delete \(selection.count)", systemImage: "trash")
                         }
@@ -409,13 +425,19 @@ struct SetDetailView: View {
                 }
                 .foregroundStyle(.primary)
 
-                LazyVGrid(columns: columns, spacing: 6) {
-                    ForEach(set.photos) { item in
-                        gridCell(item, set: set)
-                    }
+                ReorderableGrid(
+                    photos: set.photos,
+                    reorderEnabled: canReorder(set),
+                    isReordering: $reordering,
+                    onTap: { item in tapCell(item) },
+                    onReorder: { ids in model.setPhotoOrder(ids, in: setID) }
+                ) { item in
+                    gridCell(item, set: set)
                 }
 
-                Text("Tap a photo to view it, set it as cover, add a caption or remove it.")
+                Text(canReorder(set)
+                     ? "Tap a photo to view it, make it the cover, add a caption or delete it. Touch and hold, then drag to change the order."
+                     : "Tap a photo to view it, make it the cover, add a caption or delete it.")
                     .font(Brand.caption).foregroundStyle(.secondary)
 
                 if !gate.isPro {
@@ -425,21 +447,37 @@ struct SetDetailView: View {
             }
             .padding(16)
             .glass(cornerRadius: 26)
+            .confirmationDialog("Delete \(selection.count == 1 ? "this photo" : "\(selection.count) photos")?",
+                                isPresented: $confirmDeletePhotos, titleVisibility: .visible) {
+                Button("Delete", role: .destructive) {
+                    withAnimation(Brand.spring) {
+                        model.deletePhotos(selection, from: setID)
+                        selection = []
+                        selecting = false
+                    }
+                }
+            } message: {
+                Text("They’re removed from Framely and its widgets. Your Photos library isn’t affected.")
+            }
+        }
+    }
+
+    /// Album sets are ordered by the album itself (a sync would undo manual changes).
+    private func canReorder(_ set: PhotoSet) -> Bool { !set.source.isAlbum && !selecting && set.photos.count > 1 }
+
+    private func tapCell(_ item: PhotoItem) {
+        if selecting {
+            withAnimation(Brand.spring) {
+                if selection.contains(item.id) { selection.remove(item.id) } else { selection.insert(item.id) }
+            }
+        } else {
+            viewerItem = item
         }
     }
 
     private func gridCell(_ item: PhotoItem, set: PhotoSet) -> some View {
         let selected = selection.contains(item.id)
-        return Button {
-            if selecting {
-                withAnimation(Brand.bouncy) {
-                    if selected { selection.remove(item.id) } else { selection.insert(item.id) }
-                }
-            } else {
-                viewerItem = item
-            }
-        } label: {
-            Thumbnail(item: item, maxPixel: 360)
+        return Thumbnail(item: item, maxPixel: ThumbSize.grid)
                 .aspectRatio(1, contentMode: .fill)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(alignment: .topTrailing) {
@@ -458,19 +496,7 @@ struct SetDetailView: View {
                     }
                 }
                 .scaleEffect(selected ? 0.9 : 1)
-        }
-        .buttonStyle(PressableStyle())
-        .contextMenu {
-            Button { model.makeCover(item.id, in: setID) } label: { Label("Make Cover", systemImage: "star") }
-            Button { captionTarget = item } label: { Label("Caption", systemImage: "text.bubble") }
-            if !set.source.isAlbum {
-                Button(role: .destructive) {
-                    withAnimation(Brand.spring) { model.deletePhotos([item.id], from: setID) }
-                } label: { Label("Remove", systemImage: "trash") }
-            }
-        } preview: {
-            Thumbnail(item: item, maxPixel: 900).frame(width: 300, height: 380)
-        }
+                .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
     }
 
     // MARK: Toolbar
@@ -486,10 +512,11 @@ struct SetDetailView: View {
                 Divider()
                 Button(role: .destructive) { confirmDelete = true } label: { Label("Delete Set", systemImage: "trash") }
             } label: {
-                Image(systemName: "ellipsis.circle.fill")
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(.white)
+                // Plain glyph: the toolbar supplies the circle, matching the Back button.
+                Image(systemName: "ellipsis")
             }
+            .tint(.primary)
+            .accessibilityLabel("More")
         }
     }
 }

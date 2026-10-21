@@ -15,6 +15,7 @@ final class AppModel {
 
     private let store: SharedStore
     private var reloadTask: Task<Void, Never>?
+    private var warmTask: Task<Void, Never>?
 
     init(store: SharedStore = .shared) {
         self.store = store
@@ -35,8 +36,18 @@ final class AppModel {
     }
 
     func update(_ set: PhotoSet) {
-        guard let i = sets.firstIndex(where: { $0.id == set.id }) else { return }
+        // Unchanged (a picker re-sending its value, a sync that found nothing new): writing and
+        // reloading would make every widget redraw for nothing.
+        guard let i = sets.firstIndex(where: { $0.id == set.id }), sets[i] != set else { return }
         sets[i] = set
+        persist()
+    }
+
+    /// Applies a new photo order (drag to reorder). "In order" rotation and the cover follow this order.
+    func setPhotoOrder(_ ids: [UUID], in setID: UUID) {
+        guard let s = sets.firstIndex(where: { $0.id == setID }) else { return }
+        let rank = Dictionary(uniqueKeysWithValues: ids.enumerated().map { ($1, $0) })
+        sets[s].photos.sort { (rank[$0.id] ?? .max) < (rank[$1.id] ?? .max) }
         persist()
     }
 
@@ -118,18 +129,28 @@ final class AppModel {
         update(set)
     }
 
+    /// Sets currently syncing. A second sync of the same set (Sync tapped twice, or the app
+    /// becoming active mid-sync) would import the same photos twice and orphan files.
+    private var syncing: Set<UUID> = []
+
     func syncAlbum(setID: UUID, gate: FeatureGate) async {
-        guard let set = photoSet(id: setID), case .album = set.source else { return }
+        guard let set = photoSet(id: setID), case .album = set.source, !syncing.contains(setID) else { return }
+        syncing.insert(setID)
+        defer { syncing.remove(setID) }
         progressLabel = "Syncing album"
         progress = 0
         let result = await AlbumSyncService.sync(set, limit: gate.maxPhotos()) { [weak self] value in
             Task { @MainActor in self?.progress = value }
         }
         // Merge with the latest copy (the user may have edited styles meanwhile).
-        if var latest = photoSet(id: setID) {
+        if var latest = photoSet(id: setID), let i = sets.firstIndex(where: { $0.id == setID }) {
+            let photosChanged = latest.photos != result.photos
             latest.photos = result.photos
             latest.lastSyncedAt = .now
-            update(latest)
+            sets[i] = latest
+            // Opening the app syncs albums; when the album didn't change, the widgets must not
+            // reload (that blanked them for a moment on every launch).
+            persist(reloadWidgets: photosChanged)
         }
         progress = nil
     }
@@ -146,18 +167,38 @@ final class AppModel {
 
     // MARK: Persistence
 
-    private func persist() {
+    private func persist(reloadWidgets: Bool = true) {
         store.saveSets(sets)
-        scheduleWidgetReload()
+        if reloadWidgets { scheduleWidgetReload() }
     }
 
     /// Debounced so dragging a slider doesn't spam WidgetKit's reload budget.
     func scheduleWidgetReload() {
         reloadTask?.cancel()
+        warmTask?.cancel()
         reloadTask = Task {
             try? await Task.sleep(for: .milliseconds(700))
             guard !Task.isCancelled else { return }
+            let sets = sets, gate = FeatureGate.current
+            // Render what's on screen right now *before* reloading. Reloaded widgets then
+            // redraw from a small file instead of decoding and filtering inside the extension,
+            // which blanked them for a moment (or hit the extension's memory limit).
+            await RenderedImageCache.prewarm(sets, gate: gate, upcomingSlots: 1, prune: false)
+            guard !Task.isCancelled else { return }
             WidgetCenter.shared.reloadAllTimelines()
+            // Then the rest of the timeline, so the next rotations are a file read too.
+            await RenderedImageCache.prewarm(sets, gate: gate)
+        }
+    }
+
+    /// Tops up the widgets' image cache without reloading them (call when the app opens).
+    /// Rotations keep moving while the app is closed; this pre-builds the ones coming up.
+    func warmWidgetImages() {
+        guard warmTask == nil else { return }
+        let sets = sets
+        warmTask = Task(priority: .utility) {
+            await RenderedImageCache.prewarm(sets, gate: .current)
+            warmTask = nil
         }
     }
 

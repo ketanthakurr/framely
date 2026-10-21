@@ -39,31 +39,11 @@ enum RotationInterval: Int, Codable, CaseIterable, Identifiable, Sendable {
     var id: Int { rawValue }
     var seconds: TimeInterval { TimeInterval(rawValue * 60) }
 
-    var shortTitle: String {
-        switch self {
-        case .min5: "5m"
-        case .min15: "15m"
-        case .min30: "30m"
-        case .hour1: "1h"
-        case .hour3: "3h"
-        case .hour6: "6h"
-        case .hour12: "12h"
-        case .day1: "1d"
-        }
-    }
+    /// Chip label, e.g. "5 min", "1 hr", "1 day". Same wording as every other interval label.
+    var shortTitle: String { RotationInterval.shortTitle(minutes: rawValue) }
 
-    var title: String {
-        switch self {
-        case .min5: "Every 5 minutes"
-        case .min15: "Every 15 minutes"
-        case .min30: "Every 30 minutes"
-        case .hour1: "Every hour"
-        case .hour3: "Every 3 hours"
-        case .hour6: "Every 6 hours"
-        case .hour12: "Twice a day"
-        case .day1: "Once a day"
-        }
-    }
+    /// e.g. "Every 5 minutes", "Every hour", "Every day".
+    var title: String { RotationInterval.everyTitle(minutes: rawValue) }
 }
 
 /// A named collection of photos with its own rotation and style.
@@ -94,8 +74,6 @@ struct PhotoSet: Codable, Hashable, Identifiable, Sendable {
 
     /// Effective rotation length in minutes (before Pro gating).
     var intervalMinutes: Int { customMinutes ?? interval.rawValue }
-    var intervalShortTitle: String { RotationInterval.shortTitle(minutes: intervalMinutes) }
-    var intervalTitle: String { customMinutes == nil ? interval.title : "Every " + RotationInterval.longTitle(minutes: intervalMinutes) }
 
     static let symbols = [
         "heart.fill", "sparkles", "sun.max.fill", "moon.stars.fill", "airplane",
@@ -127,24 +105,39 @@ struct PhotoSet: Codable, Hashable, Identifiable, Sendable {
 }
 
 extension RotationInterval {
-    /// "5m", "1h 30m", "2d"
+    /// "5 min", "1 hr 30 min", "2 days"
     static func shortTitle(minutes: Int) -> String {
-        let d = minutes / 1440, h = (minutes % 1440) / 60, m = minutes % 60
+        let (d, h, m) = components(minutes)
         var parts: [String] = []
-        if d > 0 { parts.append("\(d)d") }
-        if h > 0 { parts.append("\(h)h") }
-        if m > 0 || parts.isEmpty { parts.append("\(m)m") }
+        if d > 0 { parts.append(d == 1 ? "1 day" : "\(d) days") }
+        if h > 0 { parts.append("\(h) hr") }
+        if m > 0 || parts.isEmpty { parts.append("\(m) min") }
         return parts.joined(separator: " ")
     }
 
     /// "5 minutes", "1 hour 30 minutes", "2 days"
     static func longTitle(minutes: Int) -> String {
-        let d = minutes / 1440, h = (minutes % 1440) / 60, m = minutes % 60
+        let (d, h, m) = components(minutes)
         var parts: [String] = []
         if d > 0 { parts.append(d == 1 ? "1 day" : "\(d) days") }
         if h > 0 { parts.append(h == 1 ? "1 hour" : "\(h) hours") }
         if m > 0 || parts.isEmpty { parts.append(m == 1 ? "1 minute" : "\(m) minutes") }
         return parts.joined(separator: " ")
+    }
+
+    /// "Every minute", "Every hour", "Every day", "Every 5 minutes", "Every 1 hour 30 minutes".
+    static func everyTitle(minutes: Int) -> String {
+        switch minutes {
+        case 1: "Every minute"
+        case 60: "Every hour"
+        case 1440: "Every day"
+        default: "Every " + longTitle(minutes: minutes)
+        }
+    }
+
+    private static func components(_ minutes: Int) -> (days: Int, hours: Int, minutes: Int) {
+        let total = max(0, minutes)
+        return (total / 1440, (total % 1440) / 60, total % 60)
     }
 }
 
@@ -154,5 +147,8 @@ struct RotationSchedule: Hashable, Sendable {
     var anchorMinutes: Int
 
     var seconds: TimeInterval { TimeInterval(max(1, minutes) * 60) }
+    /// Labels for what the widget really does (Pro-gated), so every screen agrees.
+    var shortTitle: String { RotationInterval.shortTitle(minutes: minutes) }
+    var title: String { RotationInterval.everyTitle(minutes: minutes) }
     static let `default` = RotationSchedule(minutes: 60, anchorMinutes: 0)
 }

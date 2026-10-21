@@ -76,9 +76,10 @@ struct FramedPhotoView: View {
     var body: some View {
         switch style.frame {
         case .edgeToEdge:
+            // Scrim above the photo (it was behind it, so it never showed), text above the scrim.
             PhotoFill(image: content.image)
+                .overlay { scrim }
                 .overlay(alignment: style.overlayPosition.alignment) { overlayText(light: true).padding(p + 4) }
-                .background(scrim)
 
         case .inset:
             insetPhoto(shape: RoundedRectangle(cornerRadius: style.innerCornerRadius, style: .continuous))
@@ -117,6 +118,7 @@ struct FramedPhotoView: View {
 
     private func insetPhoto<S: Shape>(shape: S) -> some View {
         PhotoFill(image: content.image)
+            .overlay { scrim }
             .clipShape(shape)
             .overlay(alignment: style.overlayPosition.alignment) { overlayText(light: true).padding(p) }
             .shadow(color: style.glow ? (content.photoColor ?? .black).opacity(0.55) : .black.opacity(0.18),
@@ -198,7 +200,7 @@ struct FramedPhotoView: View {
     @ViewBuilder
     private var scrim: some View {
         if !overlayLines.isEmpty {
-            LinearGradient(colors: [.clear, .black.opacity(0.35)],
+            LinearGradient(colors: [.clear, .black.opacity(0.45)],
                            startPoint: style.overlayPosition == .topLeading ? .bottom : .center,
                            endPoint: style.overlayPosition == .topLeading ? .top : .bottom)
         }
@@ -230,12 +232,13 @@ struct PhotoFill: View {
         }
     }
 
-    /// On iOS 18+ tinted Home Screens, keep the photo's detail but tint it to match.
+    /// On Home Screens set to Tinted or Clear icons (iOS 18+), keep photos in their original
+    /// colors, like Apple's Photos widget with "Always Display in Full Color".
     @ViewBuilder
     static func tintable(_ image: UIImage) -> some View {
         let base = Image(uiImage: image).resizable()
         if #available(iOS 18.0, *) {
-            base.widgetAccentedRenderingMode(.accentedDesaturated)
+            base.widgetAccentedRenderingMode(.fullColor)
         } else {
             base
         }

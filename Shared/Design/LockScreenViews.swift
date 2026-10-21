@@ -160,11 +160,13 @@ struct LockRectangularView: View {
             }
         case .textOverPhoto:
             ZStack(alignment: .bottomLeading) {
+                // In iOS's tint brightness is opacity, and a black shadow turns invisible.
+                // Fading the photo toward the bottom leaves dark room for the text instead.
                 framed(content.image)
+                    .mask(LinearGradient(colors: [.white, .white.opacity(0.2)], startPoint: .top, endPoint: .bottom))
                 texts(alignment: .leading)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .shadow(color: .black, radius: 3)
             }
         }
     }

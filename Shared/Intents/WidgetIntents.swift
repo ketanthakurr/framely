@@ -73,9 +73,6 @@ struct PhotoWidgetIntent: WidgetConfigurationIntent {
     @Parameter(title: "Photo Set")
     var photoSet: PhotoSetEntity?
 
-    @Parameter(title: "Show Next Button", default: true)
-    var showNextButton: Bool
-
     init() {}
 }
 
@@ -119,26 +116,4 @@ struct LockScreenWidgetIntent: WidgetConfigurationIntent {
     var photoSet: PhotoSetEntity?
 
     init() {}
-}
-
-// MARK: - Interactive "next photo" button
-
-struct NextPhotoIntent: AppIntent {
-    static let title: LocalizedStringResource = "Next Photo"
-    static let isDiscoverable = false
-
-    @Parameter(title: "Set ID")
-    var setID: String
-
-    init() {}
-    init(setID: UUID) { self.setID = setID.uuidString }
-
-    func perform() async throws -> some IntentResult {
-        if let id = UUID(uuidString: setID) {
-            SharedStore.shared.advance(setID: id)
-        }
-        // WidgetKit reloads the tapped widget automatically; refresh the others showing this set.
-        WidgetCenter.shared.reloadAllTimelines()
-        return .result()
-    }
 }

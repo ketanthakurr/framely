@@ -9,7 +9,30 @@ struct WidgetPreview: View {
     /// Advances through photos to show the rotation animation.
     var photoOffset: Int = 0
 
-    @State private var image: UIImage?
+    /// Image plus the photo/filter/size it was made for, so a changed preview never draws the old photo.
+    @State private var loaded: (key: String, image: UIImage)?
+
+    init(set: PhotoSet, size: FrameSize = .small, style: WidgetStyle? = nil, photoOffset: Int = 0) {
+        self.set = set
+        self.size = size
+        self.style = style
+        self.photoOffset = photoOffset
+    }
+
+    private var key: String { "\(item?.id.uuidString ?? "")-\(resolvedStyle.filter.rawValue)-\(size)" }
+
+    /// The loaded image if it matches, else an already-decoded one from memory (first frame, no flash).
+    private var image: UIImage? {
+        if let loaded, loaded.key == key { return loaded.image }
+        return item.flatMap { ThumbnailCache.shared.cached(for: $0, maxPixel: Self.pixels(size), filter: resolvedStyle.filter) }
+    }
+
+    private static func pixels(_ size: FrameSize) -> CGFloat { size == .small ? ThumbSize.previewSmall : ThumbSize.card }
+
+    private static func item(in set: PhotoSet, offset: Int) -> PhotoItem? {
+        guard !set.photos.isEmpty else { return nil }
+        return set.photos[((offset % set.photos.count) + set.photos.count) % set.photos.count]
+    }
 
     static func dimensions(_ size: FrameSize) -> CGSize {
         switch size {
@@ -19,10 +42,7 @@ struct WidgetPreview: View {
         }
     }
 
-    private var item: PhotoItem? {
-        guard !set.photos.isEmpty else { return nil }
-        return set.photos[((photoOffset % set.photos.count) + set.photos.count) % set.photos.count]
-    }
+    private var item: PhotoItem? { Self.item(in: set, offset: photoOffset) }
 
     private var resolvedStyle: WidgetStyle { style ?? set.style }
 
@@ -43,11 +63,16 @@ struct WidgetPreview: View {
         .frame(width: dims.width, height: dims.height)
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .shadow(color: (item?.dominantColorHex.map(Color.init(hex:)) ?? .black).opacity(0.35), radius: 18, y: 10)
-        .task(id: "\(item?.id.uuidString ?? "")-\(resolvedStyle.filter.rawValue)-\(size)") {
-            guard let item else { image = nil; return }
-            let px: CGFloat = size == .small ? 500 : 1000
-            let loaded = await ThumbnailCache.shared.image(for: item, maxPixel: px, filter: resolvedStyle.filter)
-            withAnimation(Brand.spring) { image = loaded }
+        .task(id: key) {
+            let key = key
+            guard let item else { loaded = nil; return }
+            let px = Self.pixels(size)
+            if let hit = ThumbnailCache.shared.cached(for: item, maxPixel: px, filter: resolvedStyle.filter) {
+                loaded = (key, hit)
+                return
+            }
+            guard let image = await ThumbnailCache.shared.image(for: item, maxPixel: px, filter: resolvedStyle.filter) else { return }
+            withAnimation(.easeOut(duration: 0.2)) { loaded = (key, image) }
         }
     }
 }
@@ -55,6 +80,8 @@ struct WidgetPreview: View {
 /// A fanned, swipeable stack of photos. Drag the top card away to send it to the back.
 struct CardStack: View {
     let photos: [PhotoItem]
+    /// True during a sideways swipe, so the page can stop scrolling under it.
+    @Binding var isSwiping: Bool
     var onTopChange: (PhotoItem?) -> Void = { _ in }
 
     @State private var order: [PhotoItem] = []
@@ -72,8 +99,9 @@ struct CardStack: View {
             }
         }
         .onAppear { order = photos; onTopChange(order.first) }
-        .onChange(of: photos) { _, new in
-            order = new
+        .onChange(of: photos.map(\.id)) { _, _ in
+            // Only reset when photos are added, removed or reordered, not on caption edits.
+            order = photos
             onTopChange(order.first)
         }
         .sensoryFeedback(.impact(weight: .light), trigger: swipeCount)
@@ -82,10 +110,10 @@ struct CardStack: View {
     private func card(_ item: PhotoItem, index: Int) -> some View {
         let isTop = index == 0
         let fan = Double(index) * (index.isMultiple(of: 2) ? 4 : -4)
-        return Thumbnail(item: item, maxPixel: 900)
+        return Thumbnail(item: item, maxPixel: ThumbSize.card)
             .aspectRatio(0.8, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).strokeBorder(.white.opacity(0.5), lineWidth: 1))
+            .overlay { RoundedRectangle(cornerRadius: 28, style: .continuous).strokeBorder(.white.opacity(0.5), lineWidth: 1) }
             .shadow(color: .black.opacity(isTop ? 0.3 : 0.15), radius: isTop ? 20 : 10, y: 10)
             .scaleEffect(1 - CGFloat(index) * 0.05)
             .offset(y: CGFloat(index) * -14)
@@ -101,18 +129,18 @@ struct CardStack: View {
             .onChanged { value in
                 if isHorizontal == nil {
                     isHorizontal = abs(value.translation.width) > abs(value.translation.height)
+                    isSwiping = isHorizontal == true
                 }
                 guard isHorizontal == true else { return }
                 drag = CGSize(width: value.translation.width, height: 0)
             }
             .onEnded { value in
-                defer { isHorizontal = nil }
+                defer { isHorizontal = nil; isSwiping = false }
                 guard isHorizontal == true else { return }
                 if abs(value.translation.width) > 110 || abs(value.predictedEndTranslation.width) > 260 {
                     withAnimation(.easeIn(duration: 0.18)) {
                         drag = CGSize(width: value.translation.width > 0 ? 500 : -500, height: 0)
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                    } completion: {
                         guard !order.isEmpty else { return }
                         var t = Transaction()
                         t.disablesAnimations = true

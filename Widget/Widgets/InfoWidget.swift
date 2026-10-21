@@ -42,7 +42,7 @@ struct InfoWidgetView: View {
             LockedWidgetView(title: "Photo + Info widgets")
         } else {
             let item = chosenPhoto
-            let image = item.flatMap { ImageStore.image(for: $0, maxPixel: family.maxPixel, filter: entry.base.style.filter) }
+            let image = item.flatMap { ImageStore.image(for: $0, maxPixel: family.maxPixel, filter: entry.base.style.filter, persist: true) }
             let accent = item?.dominantColorHex.map(Color.init(hex:)) ?? Color(hex: "#8E8CF0")
 
             layout(image: image, item: item, accent: accent)
@@ -137,7 +137,7 @@ struct InfoWidgetView: View {
                 }
             } else {
                 Text("Set a date").font(.system(size: 18, weight: .bold, design: .rounded))
-                Text("Long-press › Edit Widget").font(.system(size: 11, weight: .medium, design: .rounded)).opacity(0.8)
+                Text("Touch and hold › Edit Widget").font(.system(size: 11, weight: .medium, design: .rounded)).opacity(0.8)
             }
             Text(entry.countdownTitle)
                 .font(.system(size: 14, weight: .semibold, design: .rounded))

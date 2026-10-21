@@ -3,15 +3,17 @@ import SwiftUI
 /// Carousel card: a fanned mini-stack of the set's photos with a glass caption.
 struct SetCard: View {
     let set: PhotoSet
+    /// What the widget really does (Pro-gated), so the tag matches the set screen.
+    let schedule: RotationSchedule
 
     var body: some View {
         ZStack(alignment: .bottom) {
             // Back photos peeking out
             ForEach(Array(set.photos.prefix(3).enumerated().reversed()), id: \.element.id) { index, item in
-                Thumbnail(item: item, maxPixel: 700)
+                Thumbnail(item: item, maxPixel: ThumbSize.card)
                     .frame(width: 250, height: 320)
                     .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 30, style: .continuous).strokeBorder(.white.opacity(0.35), lineWidth: 1))
+                    .overlay { RoundedRectangle(cornerRadius: 30, style: .continuous).strokeBorder(.white.opacity(0.35), lineWidth: 1) }
                     .rotationEffect(.degrees(index == 0 ? 0 : (index == 1 ? 5 : -5)))
                     .offset(x: index == 0 ? 0 : (index == 1 ? 12 : -12), y: CGFloat(index) * -6)
                     .scaleEffect(1 - CGFloat(index) * 0.04)
@@ -46,15 +48,21 @@ struct SetCard: View {
                 .background(Brand.gradient, in: Circle())
             VStack(alignment: .leading, spacing: 1) {
                 Text(set.name).font(Brand.headline).lineLimit(1)
-                HStack(spacing: 4) {
-                    Text("\(set.photos.count) photos")
-                    Text("·")
-                    Image(systemName: set.order.symbol)
-                    Text(set.intervalShortTitle)
-                    if set.source.isAlbum { Image(systemName: "arrow.triangle.2.circlepath") }
+                HStack(spacing: 5) {
+                    Text("^[\(set.photos.count) photo](inflect: true)")
+                    Text("·").accessibilityHidden(true)
+                    Label(schedule.shortTitle, systemImage: "timer")
+                        .labelStyle(.titleAndIcon)
+                        .accessibilityLabel(schedule.title)
+                    if set.source.isAlbum {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .accessibilityLabel("Synced album")
+                    }
                 }
                 .font(Brand.caption)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
             }
             Spacer(minLength: 0)
         }
@@ -77,7 +85,7 @@ struct NewSetCard: View {
                 .glassCircle()
             Text(locked ? "More sets with Pro" : "New set")
                 .font(Brand.headline)
-            Text(locked ? "Family, travel, pets —\none widget each" : "Family, travel, pets…")
+            Text(locked ? "Family, travel, pets.\nOne widget each." : "Family, travel, pets…")
                 .font(Brand.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -150,8 +158,8 @@ struct FloatingPolaroids: View {
                     Image(uiImage: images[i]).resizable().scaledToFill()
                 } else {
                     LinearGradient(colors: gradients[i], startPoint: .topLeading, endPoint: .bottomTrailing)
-                        .overlay(Image(systemName: ["sun.max.fill", "heart.fill", "leaf.fill"][i])
-                            .font(.system(size: 34)).foregroundStyle(.white.opacity(0.9)))
+                        .overlay { Image(systemName: ["sun.max.fill", "heart.fill", "leaf.fill"][i])
+                            .font(.system(size: 34)).foregroundStyle(.white.opacity(0.9)) }
                 }
             }
             .frame(width: 130, height: 130)

@@ -72,9 +72,10 @@ struct MosaicContent: View {
 
     private let gap: CGFloat = 4
 
-    private func image(_ shift: Int, maxPixel: CGFloat = 600) -> UIImage? {
+    // Only the shared sizes, so every tile hits what the app pre-built.
+    private func image(_ shift: Int, maxPixel: CGFloat = WidgetPixelSize.small) -> UIImage? {
         guard let item = entry.photo(shift: shift) else { return nil }
-        return ImageStore.image(for: item, maxPixel: maxPixel, filter: entry.style.filter)
+        return ImageStore.image(for: item, maxPixel: maxPixel, filter: entry.style.filter, persist: true)
     }
 
     private var tileRadius: CGFloat { max(4, entry.style.innerCornerRadius * 0.7) }
@@ -94,25 +95,25 @@ struct MosaicContent: View {
         switch family {
         case .systemMedium:
             HStack(spacing: gap) {
-                tile(0, maxPixel: 800)
+                tile(0, maxPixel: WidgetPixelSize.large)
                 VStack(spacing: gap) { tile(1); tile(2) }
                     .frame(maxWidth: .infinity)
             }
         case .systemLarge:
             VStack(spacing: gap) {
-                tile(0, maxPixel: 1000).frame(maxHeight: .infinity).layoutPriority(1)
+                tile(0, maxPixel: WidgetPixelSize.large).frame(maxHeight: .infinity).layoutPriority(1)
                 HStack(spacing: gap) { tile(1); tile(2); tile(3) }
                     .frame(height: 110)
             }
         default:
             VStack(spacing: gap) {
-                HStack(spacing: gap) { tile(0, maxPixel: 300); tile(1, maxPixel: 300) }
-                HStack(spacing: gap) { tile(2, maxPixel: 300); tile(3, maxPixel: 300) }
+                HStack(spacing: gap) { tile(0); tile(1) }
+                HStack(spacing: gap) { tile(2); tile(3) }
             }
         }
     }
 
-    private func tile(_ shift: Int, maxPixel: CGFloat = 600) -> some View {
+    private func tile(_ shift: Int, maxPixel: CGFloat = WidgetPixelSize.small) -> some View {
         PhotoFill(image: image(shift, maxPixel: maxPixel))
             .clipShape(RoundedRectangle(cornerRadius: tileRadius, style: .continuous))
     }
@@ -175,7 +176,7 @@ struct MosaicContent: View {
 
     private func polaroid(_ shift: Int, side: CGFloat) -> some View {
         VStack(spacing: 0) {
-            PhotoFill(image: image(shift, maxPixel: 500))
+            PhotoFill(image: image(shift))
                 .frame(width: side - 10, height: side - 10)
                 .clipShape(RoundedRectangle(cornerRadius: 2))
             Spacer(minLength: 0)

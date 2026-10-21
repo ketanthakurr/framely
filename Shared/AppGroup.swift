@@ -58,10 +58,10 @@ enum DeepLink: Equatable {
 }
 
 enum AppLinks {
-    // TODO: replace with your real pages before submitting (App Review requires working links).
-    static let privacyPolicy = URL(string: "https://example.com/framely/privacy")!
+    // Hosted on GitHub Pages: github.com/ketanthakurr/framely-site
+    static let privacyPolicy = URL(string: "https://ketanthakurr.github.io/framely-site/privacy.html")!
     static let termsOfUse = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!
-    static let support = URL(string: "mailto:support@example.com")!
+    static let support = URL(string: "mailto:ketanthakur603@gmail.com")!
     static let shortcutsApp = URL(string: "shortcuts://")!
     /// Your numeric App Store ID (App Store Connect › App Information › Apple ID), e.g. "6720000000".
     /// Once set, codes typed into Framely's redeem field open Apple's redemption page pre-filled.

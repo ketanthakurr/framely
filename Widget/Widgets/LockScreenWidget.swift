@@ -25,7 +25,7 @@ struct LockScreenWidgetView: View {
         let count = family == .accessoryRectangular && style.rectLayout == .strip ? 3 : 1
         let images: [UIImage?] = (0..<count).map { shift in
             entry.photo(shift: shift).flatMap {
-                ImageStore.image(for: $0, maxPixel: family.maxPixel, lockLook: style.look)
+                ImageStore.image(for: $0, maxPixel: family.maxPixel, lockLook: style.look, persist: true)
             }
         }
         return LockContent(images: images, item: entry.photo(), set: entry.set, style: style, date: entry.date)

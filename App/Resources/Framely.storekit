@@ -1,80 +1,82 @@
 {
-  "identifier" : "7C1F2A40",
-  "nonRenewingSubscriptions" : [
-
-  ],
-  "products" : [
-
-  ],
-  "settings" : {
-    "_enableAskToBuyInterruptionForTesting" : false,
-    "_storeKitErrors" : [
-
-    ]
-  },
-  "subscriptionGroups" : [
+  "identifier": "7C1F2A40",
+  "nonRenewingSubscriptions": [],
+  "products": [
     {
-      "id" : "21500001",
-      "localizations" : [
-
-      ],
-      "name" : "Framely Pro",
-      "subscriptions" : [
+      "displayPrice": "1999",
+      "familyShareable": false,
+      "internalID": "6500000003",
+      "localizations": [
         {
-          "adHocOffers" : [
-
-          ],
-          "codeOffers" : [
-
-          ],
-          "displayPrice" : "19.99",
-          "familyShareable" : false,
-          "groupNumber" : 1,
-          "internalID" : "6500000002",
-          "introductoryOffer" : null,
-          "localizations" : [
+          "description": "Every Framely Pro feature, forever. One-time purchase.",
+          "displayName": "Framely Pro Lifetime",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "LIFETIME_0001",
+      "referenceName": "Pro Lifetime",
+      "type": "NonConsumable"
+    }
+  ],
+  "settings": {
+    "_enableAskToBuyInterruptionForTesting": false,
+    "_locale": "en_IN",
+    "_storefront": "IND",
+    "_storeKitErrors": []
+  },
+  "subscriptionGroups": [
+    {
+      "id": "21500001",
+      "localizations": [],
+      "name": "Framely Pro",
+      "subscriptions": [
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "999",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "6500000002",
+          "introductoryOffer": null,
+          "localizations": [
             {
-              "description" : "Everything in Framely, billed yearly.",
-              "displayName" : "Framely Pro Yearly",
-              "locale" : "en_US"
+              "description": "Everything in Framely, billed yearly.",
+              "displayName": "Framely Pro Yearly",
+              "locale": "en_US"
             }
           ],
-          "productID" : "com.widget.framely.pro.yearly",
-          "recurringSubscriptionPeriod" : "P1Y",
-          "referenceName" : "Pro Yearly",
-          "subscriptionGroupID" : "21500001",
-          "type" : "RecurringSubscription"
+          "productID": "PRO_0002",
+          "recurringSubscriptionPeriod": "P1Y",
+          "referenceName": "Pro Yearly",
+          "subscriptionGroupID": "21500001",
+          "type": "RecurringSubscription"
         },
         {
-          "adHocOffers" : [
-
-          ],
-          "codeOffers" : [
-
-          ],
-          "displayPrice" : "2.99",
-          "familyShareable" : false,
-          "groupNumber" : 2,
-          "internalID" : "6500000001",
-          "introductoryOffer" : null,
-          "localizations" : [
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "99",
+          "familyShareable": false,
+          "groupNumber": 2,
+          "internalID": "6500000001",
+          "introductoryOffer": null,
+          "localizations": [
             {
-              "description" : "Everything in Framely, billed monthly.",
-              "displayName" : "Framely Pro Monthly",
-              "locale" : "en_US"
+              "description": "Everything in Framely, billed monthly.",
+              "displayName": "Framely Pro Monthly",
+              "locale": "en_US"
             }
           ],
-          "productID" : "com.widget.framely.pro.monthly",
-          "recurringSubscriptionPeriod" : "P1M",
-          "referenceName" : "Pro Monthly",
-          "subscriptionGroupID" : "21500001",
-          "type" : "RecurringSubscription"
+          "productID": "PRO_0001",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "Pro Monthly",
+          "subscriptionGroupID": "21500001",
+          "type": "RecurringSubscription"
         }
       ]
     }
   ],
-  "version" : {
-    "major" : 3,
-    "minor" : 0
+  "version": {
+    "major": 3,
+    "minor": 0
   }
 }

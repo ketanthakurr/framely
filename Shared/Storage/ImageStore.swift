@@ -43,6 +43,7 @@ enum ImageStore {
 
     static func delete(_ item: PhotoItem) {
         try? FileManager.default.removeItem(at: url(for: item.fileName))
+        RenderedImageCache.remove(fileName: item.fileName)
     }
 
     /// Removes files no set references anymore (e.g. after a crash mid-import).
@@ -51,17 +52,33 @@ enum ImageStore {
         let files = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
         for file in files where !used.contains(file) {
             try? FileManager.default.removeItem(at: url(for: file))
+            RenderedImageCache.remove(fileName: file)
         }
     }
 
     // MARK: Load
 
     /// Loads a photo downsampled to `maxPixel` with the given filter applied.
-    static func image(for item: PhotoItem, maxPixel: CGFloat, filter: PhotoFilter = .original, lockLook: LockPhotoLook = .natural) -> UIImage? {
+    /// Pass `lockLook` only for Lock Screen widgets: it also brightens the photo for iOS's tint.
+    /// `persist` (widgets and prewarm only) keeps the finished image on disk, so repeat widget
+    /// renders (resizing, timeline steps) are cheap. App thumbnails use the in-memory cache instead.
+    static func image(for item: PhotoItem, maxPixel: CGFloat, filter: PhotoFilter = .original,
+                      lockLook: LockPhotoLook? = nil, persist: Bool = false) -> UIImage? {
+        // The full-size, unfiltered photo is already on disk: caching it would only duplicate it.
+        let cacheable = persist && (maxPixel < storedMaxPixel || filter != .original || lockLook != nil)
+        if cacheable, let hit = RenderedImageCache.load(fileName: item.fileName, maxPixel: maxPixel, filter: filter, lockLook: lockLook) {
+            return hit
+        }
         guard let source = CGImageSourceCreateWithURL(url(for: item.fileName) as CFURL, nil),
               let cg = thumbnail(from: source, maxPixel: maxPixel) else { return nil }
         var result = ImageProcessing.apply(filter, to: cg) ?? cg
-        result = ImageProcessing.apply(lockLook, to: result) ?? result
+        if let lockLook {
+            result = ImageProcessing.apply(lockLook, to: result) ?? result
+            result = ImageProcessing.liftForLockScreen(result, look: lockLook) ?? result
+        }
+        if cacheable {
+            RenderedImageCache.store(result, fileName: item.fileName, maxPixel: maxPixel, filter: filter, lockLook: lockLook)
+        }
         return UIImage(cgImage: result)
     }
 
@@ -115,6 +132,23 @@ enum ImageProcessing {
     }
 
     /// Lock Screen looks: tuned so photos read well in iOS's tinted (vibrant) rendering.
+    /// iOS draws Lock Screen widgets "vibrant": brightness becomes opacity, so a dark photo
+    /// turns almost see-through. Opening up shadows and midtones keeps faces and detail visible.
+    static func liftForLockScreen(_ image: CGImage, look: LockPhotoLook) -> CGImage? {
+        let (shadows, gamma): (Double, Double)
+        switch look {
+        case .natural: return nil  // the original photo, untouched
+        case .soft: (shadows, gamma) = (0.8, 0.75)
+        case .contrast: (shadows, gamma) = (0.6, 0.85)
+        case .poster, .outline: return nil  // already high-key by design
+        }
+        let output = CIImage(cgImage: image)
+            .applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 0])
+            .applyingFilter("CIHighlightShadowAdjust", parameters: ["inputShadowAmount": shadows, "inputHighlightAmount": 1.0])
+            .applyingFilter("CIGammaAdjust", parameters: ["inputPower": gamma])
+        return context.createCGImage(output, from: output.extent)
+    }
+
     static func apply(_ look: LockPhotoLook, to image: CGImage) -> CGImage? {
         let input = CIImage(cgImage: image)
         var output: CIImage?

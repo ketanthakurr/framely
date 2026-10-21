@@ -8,7 +8,6 @@ struct SetEntry: TimelineEntry {
     let slot: Int
     let gate: FeatureGate
     var isPreview: Bool = false
-    var showNextButton: Bool = true
 
     var style: WidgetStyle { gate.sanitize(set?.style ?? .default) }
     var schedule: RotationSchedule { gate.schedule(for: set) }
@@ -63,23 +62,10 @@ extension WidgetFamily {
     /// Pixel size to decode photos at for this family (@3x).
     var maxPixel: CGFloat {
         switch self {
-        case .systemSmall: 540
-        case .systemMedium, .systemLarge, .systemExtraLarge: 1150
-        default: 320
+        case .systemSmall: WidgetPixelSize.small
+        case .systemMedium, .systemLarge, .systemExtraLarge: WidgetPixelSize.large
+        default: WidgetPixelSize.accessory
         }
-    }
-}
-
-/// Glassy round "next" button used on interactive widgets.
-struct NextPhotoGlyph: View {
-    var body: some View {
-        Image(systemName: "arrow.forward")
-            .font(.system(size: 11, weight: .bold))
-            .foregroundStyle(.white)
-            .frame(width: 26, height: 26)
-            .background(.ultraThinMaterial, in: Circle())
-            .overlay(Circle().strokeBorder(.white.opacity(0.35), lineWidth: 0.6))
-            .shadow(color: .black.opacity(0.2), radius: 3, y: 1)
     }
 }
 

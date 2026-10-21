@@ -9,7 +9,7 @@ struct OnboardingView: View {
 
     private let pages: [(title: String, body: String)] = [
         ("Your photos,\nalive on your iPhone", "Pick the moments you love. Framely turns them into widgets that change on your schedule."),
-        ("Make it yours", "Polaroid, film, glass or arch frames. Filters, color-matched themes, dates and captions."),
+        ("Make it yours", "Polaroid, film, glass or arch frames. Filters, themes that match your photo, dates and captions."),
         ("Every screen", "Home Screen, Lock Screen and StandBy. Rotate your wallpaper too, with one Shortcut."),
     ]
 
@@ -22,14 +22,18 @@ struct OnboardingView: View {
                     ForEach(pages.indices, id: \.self) { i in
                         VStack(spacing: 28) {
                             Spacer(minLength: 20)
+                            // Shrinks first on small phones / large text, so the copy never clips.
                             illustration(for: i)
-                                .frame(height: 300)
+                                .frame(minHeight: 140, maxHeight: 300)
+                                .layoutPriority(-1)
+                                .accessibilityHidden(true)
                             VStack(spacing: 12) {
                                 Text(pages[i].title)
                                     .font(Brand.title(32))
                                     .multilineTextAlignment(.center)
                                 Text(pages[i].body)
                                     .font(Brand.body)
+                                    .fixedSize(horizontal: false, vertical: true)
                                     .foregroundStyle(.secondary)
                                     .multilineTextAlignment(.center)
                                     .padding(.horizontal, 30)
@@ -50,6 +54,7 @@ struct OnboardingView: View {
                     }
                 }
                 .padding(.bottom, 24)
+                .accessibilityHidden(true)
 
                 Button(page == pages.count - 1 ? "Get Started" : "Continue") {
                     if page < pages.count - 1 {
@@ -64,10 +69,12 @@ struct OnboardingView: View {
                 .sensoryFeedback(.impact(weight: .light), trigger: page)
             }
         }
-        .task {
+        // Cycles the style demo only while its page is showing (it re-rendered every page forever).
+        .task(id: page) {
+            guard page == 1, !reduceMotion else { return }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(3))
-                if reduceMotion { continue }
+                guard !Task.isCancelled else { return }
                 withAnimation(.easeInOut(duration: 0.3)) { styleIndex += 1 }
             }
         }
